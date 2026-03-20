@@ -1,13 +1,11 @@
 [
   {
     "name": "Basic Safety",
-    "description": "Hide the cue ball behind the 2-ball after potting the 1-ball. No direct shot for opponent.",
+    "description": "Pot the 1-ball and hide the cue ball behind the 2-ball. No direct shot for opponent.",
     "difficulty": 3,
     "balls": [
       { "num": 0, "x": 22, "y": 66 },
-      { "num": 1, "x": 22, "y": 50 },
-      { "num": 2, "x": 22, "y": 22 },
-      { "num": 9, "x": 36, "y": 36 }
+      { "num": 1, "x": 22, "y": 50 }
     ]
   },
   {
@@ -25,9 +23,7 @@
     "difficulty": 4,
     "balls": [
       { "num": 0, "x": 22, "y": 66 },
-      { "num": 1, "x": 12, "y": 50 },
-      { "num": 2, "x": 22, "y": 30 },
-      { "num": 9, "x": 36, "y": 18 }
+      { "num": 1, "x": 12, "y": 50 }
     ]
   }
 ]

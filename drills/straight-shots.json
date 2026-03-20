@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "name": "Center Pocket Straight Shot",
     "description": "Straight shot into the side pocket. Focus on center-ball hit and follow-through.",
@@ -36,15 +36,48 @@
     ]
   },
   {
-    "name": "Straight Shot Gauntlet",
-    "description": "Five balls in a line toward the corner pocket. Pot each in order — don't miss.",
+    "name": "Gauntlet 1/5",
+    "description": "First ball - short straight into the corner. Smooth stroke.",
     "difficulty": 3,
     "balls": [
       { "num": 0, "x": 22, "y": 78 },
-      { "num": 1, "x": 22, "y": 63 },
-      { "num": 2, "x": 22, "y": 48 },
-      { "num": 3, "x": 22, "y": 33 },
+      { "num": 1, "x": 22, "y": 63 }
+    ]
+  },
+  {
+    "name": "Gauntlet 2/5",
+    "description": "Second ball - leave the cue ball rolling forward.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 63 },
+      { "num": 2, "x": 22, "y": 48 }
+    ]
+  },
+  {
+    "name": "Gauntlet 3/5",
+    "description": "Third ball - staying on the center line.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 48 },
+      { "num": 3, "x": 22, "y": 33 }
+    ]
+  },
+  {
+    "name": "Gauntlet 4/5",
+    "description": "Fourth ball - keep it straight and controlled.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 33 },
       { "num": 4, "x": 22, "y": 18 }
+    ]
+  },
+  {
+    "name": "Gauntlet 5/5",
+    "description": "Final ball - pot it clean into the corner.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 18 },
+      { "num": 5, "x": 22, "y": 6 }
     ]
   }
 ]

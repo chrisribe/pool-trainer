@@ -971,6 +971,53 @@
                 drawShotLines(cue.tableX, cue.tableY, ob.tableX, ob.tableY);
             }
         }
+
+        // Draw cue ball target (ideal landing zone) if specified
+        if (drill.cueTarget) {
+            var tx = rail + drill.cueTarget.x;
+            var ty = rail + drill.cueTarget.y;
+            shotLayer.activate();
+
+            // Outer ring
+            new paper.Path.Circle({
+                center: T(tx, ty),
+                radius: S(2.5),
+                strokeColor: 'rgba(0,229,255,0.25)',
+                strokeWidth: S(0.08),
+                fillColor: null
+            });
+            // Middle ring
+            new paper.Path.Circle({
+                center: T(tx, ty),
+                radius: S(1.5),
+                strokeColor: 'rgba(0,229,255,0.35)',
+                strokeWidth: S(0.08),
+                fillColor: null
+            });
+            // Inner ring (bullseye)
+            new paper.Path.Circle({
+                center: T(tx, ty),
+                radius: S(0.6),
+                strokeColor: 'rgba(0,229,255,0.5)',
+                strokeWidth: S(0.1),
+                fillColor: 'rgba(0,229,255,0.12)'
+            });
+            // Crosshair lines
+            var chSize = S(3.2);
+            var cp = T(tx, ty);
+            new paper.Path.Line({
+                from: new paper.Point(cp.x - chSize, cp.y),
+                to: new paper.Point(cp.x + chSize, cp.y),
+                strokeColor: 'rgba(0,229,255,0.2)',
+                strokeWidth: S(0.06)
+            });
+            new paper.Path.Line({
+                from: new paper.Point(cp.x, cp.y - chSize),
+                to: new paper.Point(cp.x, cp.y + chSize),
+                strokeColor: 'rgba(0,229,255,0.2)',
+                strokeWidth: S(0.06)
+            });
+        }
     }
 
     // Download current layout as JSON
@@ -994,6 +1041,8 @@
     var activeDrills = null;   // currently loaded drill array
     var activeDrillIdx = 0;    // current drill index within the set
     var activeCategory = null; // current category name
+    var drillListPage = 0;     // current page in drill list
+    var drillListCatId = null; // current category id in drill list
 
     // Fetch a drill JSON file (with cache)
     function fetchDrills(catalogEntry, callback) {
@@ -1015,6 +1064,21 @@
 
     // ── Menu rendering (projected on table) ──
 
+    // Get the screen bounding box of the playing surface
+    function getFeltBounds() {
+        var rail = cfg.railWidth;
+        var pw = cfg.playWidth;
+        var ph = cfg.playHeight;
+        var c1 = T(rail, rail);
+        var c2 = T(rail + pw, rail + ph);
+        return {
+            left:   Math.min(c1.x, c2.x),
+            right:  Math.max(c1.x, c2.x),
+            top:    Math.min(c1.y, c2.y),
+            bottom: Math.max(c1.y, c2.y)
+        };
+    }
+
     function showMenu() {
         appMode = 'menu';
         clearBalls();
@@ -1022,45 +1086,45 @@
         uiLayer.removeChildren();
         uiLayer.activate();
 
-        var vw = paper.view.size.width;
-        var vh = paper.view.size.height;
+        var fb = getFeltBounds();
+        var fw = fb.right - fb.left;
+        var fh = fb.bottom - fb.top;
+        var cx = (fb.left + fb.right) / 2;
 
         // Title
         new paper.PointText({
-            point: new paper.Point(vw / 2, vh * 0.12),
+            point: new paper.Point(cx, fb.top + fh * 0.1),
             content: 'POOL TRAINER',
             fillColor: '#ffffff',
             fontFamily: 'Arial, sans-serif',
             fontWeight: 'bold',
-            fontSize: Math.min(vw, vh) * 0.06,
+            fontSize: Math.min(fw, fh) * 0.06,
             justification: 'center'
         });
 
         // Subtitle
         new paper.PointText({
-            point: new paper.Point(vw / 2, vh * 0.18),
+            point: new paper.Point(cx, fb.top + fh * 0.16),
             content: 'Select a drill category',
             fillColor: 'rgba(255,255,255,0.5)',
             fontFamily: 'Arial, sans-serif',
-            fontSize: Math.min(vw, vh) * 0.025,
+            fontSize: Math.min(fw, fh) * 0.025,
             justification: 'center'
         });
 
         // Category buttons
         var catalog = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
-        var btnW = Math.min(vw * 0.5, 400);
-        var btnH = Math.min(vh * 0.08, 60);
-        var gap = btnH * 0.4;
-        var startY = vh * 0.28;
+        var btnW = Math.min(fw * 0.6, 400);
+        var btnH = Math.min(fh * 0.07, 50);
+        var gap = btnH * 0.35;
+        var startY = fb.top + fh * 0.24;
 
         catalog.forEach(function (cat, i) {
             var y = startY + i * (btnH + gap);
-            var x = vw / 2;
 
-            // Button background
             var btn = new paper.Path.Rectangle({
-                from: new paper.Point(x - btnW / 2, y),
-                to: new paper.Point(x + btnW / 2, y + btnH),
+                from: new paper.Point(cx - btnW / 2, y),
+                to: new paper.Point(cx + btnW / 2, y + btnH),
                 radius: 8,
                 fillColor: 'rgba(255,255,255,0.08)',
                 strokeColor: 'rgba(255,255,255,0.3)',
@@ -1068,9 +1132,8 @@
             });
             btn.data = { action: 'category', categoryId: cat.id };
 
-            // Button label
             var label = new paper.PointText({
-                point: new paper.Point(x, y + btnH * 0.65),
+                point: new paper.Point(cx, y + btnH * 0.65),
                 content: cat.icon + '  ' + cat.name,
                 fillColor: '#ffffff',
                 fontFamily: 'Arial, sans-serif',
@@ -1084,8 +1147,8 @@
         // Free play button
         var fpY = startY + catalog.length * (btnH + gap) + gap;
         var fpBtn = new paper.Path.Rectangle({
-            from: new paper.Point(vw / 2 - btnW / 2, fpY),
-            to: new paper.Point(vw / 2 + btnW / 2, fpY + btnH),
+            from: new paper.Point(cx - btnW / 2, fpY),
+            to: new paper.Point(cx + btnW / 2, fpY + btnH),
             radius: 8,
             fillColor: 'rgba(0,229,255,0.1)',
             strokeColor: 'rgba(0,229,255,0.4)',
@@ -1094,7 +1157,7 @@
         fpBtn.data = { action: 'freeplay' };
 
         new paper.PointText({
-            point: new paper.Point(vw / 2, fpY + btnH * 0.65),
+            point: new paper.Point(cx, fpY + btnH * 0.65),
             content: '🎱  Free Play',
             fillColor: '#00e5ff',
             fontFamily: 'Arial, sans-serif',
@@ -1105,17 +1168,17 @@
 
         // Keyboard hint
         new paper.PointText({
-            point: new paper.Point(vw / 2, vh * 0.93),
+            point: new paper.Point(cx, fb.bottom - fh * 0.03),
             content: 'Press F for fullscreen',
             fillColor: 'rgba(255,255,255,0.25)',
             fontFamily: 'Arial, sans-serif',
-            fontSize: Math.min(vw, vh) * 0.02,
+            fontSize: Math.min(fw, fh) * 0.02,
             justification: 'center'
         });
     }
 
-    // Show drill list for a category
-    function showDrillList(categoryId) {
+    // Show drill list for a category (with pagination)
+    function showDrillList(categoryId, page) {
         var cat = null;
         var catalog = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
         for (var i = 0; i < catalog.length; i++) {
@@ -1127,39 +1190,54 @@
             activeCategory = cat.name;
             activeDrills = drills;
             activeDrillIdx = 0;
+            drillListCatId = categoryId;
+            drillListPage = page || 0;
 
             uiLayer.removeChildren();
             uiLayer.activate();
 
-            var vw = paper.view.size.width;
-            var vh = paper.view.size.height;
+            var fb = getFeltBounds();
+            var fw = fb.right - fb.left;
+            var fh = fb.bottom - fb.top;
+            var cx = (fb.left + fb.right) / 2;
 
             // Title
+            var titleH = fh * 0.1;
             new paper.PointText({
-                point: new paper.Point(vw / 2, vh * 0.1),
+                point: new paper.Point(cx, fb.top + titleH),
                 content: cat.icon + ' ' + cat.name,
                 fillColor: '#ffffff',
                 fontFamily: 'Arial, sans-serif',
                 fontWeight: 'bold',
-                fontSize: Math.min(vw, vh) * 0.045,
+                fontSize: Math.min(fw, fh) * 0.04,
                 justification: 'center'
             });
 
-            var btnW = Math.min(vw * 0.55, 450);
-            var btnH = Math.min(vh * 0.065, 50);
-            var gap = btnH * 0.3;
-            var startY = vh * 0.18;
+            var btnW = Math.min(fw * 0.65, 450);
+            var btnH = Math.min(fh * 0.06, 44);
+            var gap = btnH * 0.25;
+            var listTop = fb.top + titleH + fh * 0.04;
+            // Reserve space for back button + nav at bottom
+            var listBottom = fb.bottom - fh * 0.12;
+            var available = listBottom - listTop;
+            var itemH = btnH + gap;
+            var perPage = Math.max(1, Math.floor(available / itemH));
+            var totalPages = Math.ceil(drills.length / perPage);
+            var pg = Math.min(drillListPage, totalPages - 1);
+            var startIdx = pg * perPage;
+            var endIdx = Math.min(startIdx + perPage, drills.length);
 
-            drills.forEach(function (drill, j) {
-                var y = startY + j * (btnH + gap);
-                var x = vw / 2;
+            for (var j = startIdx; j < endIdx; j++) {
+                var drill = drills[j];
+                var row = j - startIdx;
+                var y = listTop + row * itemH;
 
                 var stars = '';
                 for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '★' : '☆';
 
                 var btn = new paper.Path.Rectangle({
-                    from: new paper.Point(x - btnW / 2, y),
-                    to: new paper.Point(x + btnW / 2, y + btnH),
+                    from: new paper.Point(cx - btnW / 2, y),
+                    to: new paper.Point(cx + btnW / 2, y + btnH),
                     radius: 6,
                     fillColor: 'rgba(255,255,255,0.06)',
                     strokeColor: 'rgba(255,255,255,0.2)',
@@ -1168,29 +1246,34 @@
                 btn.data = { action: 'loadDrill', drillIdx: j };
 
                 new paper.PointText({
-                    point: new paper.Point(x - btnW * 0.42, y + btnH * 0.65),
+                    point: new paper.Point(cx - btnW * 0.42, y + btnH * 0.65),
                     content: drill.name,
                     fillColor: '#ffffff',
                     fontFamily: 'Arial, sans-serif',
-                    fontSize: btnH * 0.38,
+                    fontSize: btnH * 0.36,
                     justification: 'left'
                 }).data = { action: 'loadDrill', drillIdx: j };
 
                 new paper.PointText({
-                    point: new paper.Point(x + btnW * 0.42, y + btnH * 0.65),
+                    point: new paper.Point(cx + btnW * 0.42, y + btnH * 0.65),
                     content: stars,
                     fillColor: '#ffee00',
                     fontFamily: 'Arial, sans-serif',
-                    fontSize: btnH * 0.32,
+                    fontSize: btnH * 0.3,
                     justification: 'right'
                 }).data = { action: 'loadDrill', drillIdx: j };
-            });
+            }
 
-            // Back button
-            var backY = startY + drills.length * (btnH + gap) + gap;
+            // Bottom row: [Back]  [◀ page ▶]
+            var botY = fb.bottom - fh * 0.08;
+            var navBtnW = btnH * 1.2;  // square-ish nav buttons
+            var backW = btnW * 0.3;
+
+            // Back button (far left)
+            var bkL = cx - btnW / 2;
             var backBtn = new paper.Path.Rectangle({
-                from: new paper.Point(vw / 2 - btnW / 2, backY),
-                to: new paper.Point(vw / 2 + btnW / 2, backY + btnH),
+                from: new paper.Point(bkL, botY),
+                to: new paper.Point(bkL + backW, botY + btnH),
                 radius: 6,
                 fillColor: 'rgba(255,255,255,0.04)',
                 strokeColor: 'rgba(255,255,255,0.2)',
@@ -1199,13 +1282,74 @@
             backBtn.data = { action: 'backToMenu' };
 
             new paper.PointText({
-                point: new paper.Point(vw / 2, backY + btnH * 0.65),
-                content: '← Back to Menu',
+                point: new paper.Point(bkL + backW / 2, botY + btnH * 0.65),
+                content: '← Back',
                 fillColor: 'rgba(255,255,255,0.6)',
                 fontFamily: 'Arial, sans-serif',
-                fontSize: btnH * 0.38,
+                fontSize: btnH * 0.34,
                 justification: 'center'
             }).data = { action: 'backToMenu' };
+
+            // Page nav (right-aligned): [◀] [1/2] [▶]
+            if (totalPages > 1) {
+                var navR = cx + btnW / 2;   // right edge
+                var pgTextW = btnH * 1.8;   // space for "1 / 2"
+
+                // ▶ Next (rightmost)
+                if (pg < totalPages - 1) {
+                    var nxL = navR - navBtnW;
+                    var nextBtn = new paper.Path.Rectangle({
+                        from: new paper.Point(nxL, botY),
+                        to: new paper.Point(navR, botY + btnH),
+                        radius: 6,
+                        fillColor: 'rgba(255,255,255,0.04)',
+                        strokeColor: 'rgba(255,255,255,0.2)',
+                        strokeWidth: 1
+                    });
+                    nextBtn.data = { action: 'nextPage' };
+                    new paper.PointText({
+                        point: new paper.Point(nxL + navBtnW / 2, botY + btnH * 0.65),
+                        content: '▶',
+                        fillColor: 'rgba(255,255,255,0.6)',
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: btnH * 0.4,
+                        justification: 'center'
+                    }).data = { action: 'nextPage' };
+                }
+
+                // Page text (center-right)
+                var pgX = navR - navBtnW - pgTextW / 2;
+                new paper.PointText({
+                    point: new paper.Point(pgX, botY + btnH * 0.65),
+                    content: (pg + 1) + ' / ' + totalPages,
+                    fillColor: 'rgba(255,255,255,0.4)',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.32,
+                    justification: 'center'
+                });
+
+                // ◀ Prev (left of page text)
+                if (pg > 0) {
+                    var pvL = navR - navBtnW - pgTextW - navBtnW;
+                    var prevBtn = new paper.Path.Rectangle({
+                        from: new paper.Point(pvL, botY),
+                        to: new paper.Point(pvL + navBtnW, botY + btnH),
+                        radius: 6,
+                        fillColor: 'rgba(255,255,255,0.04)',
+                        strokeColor: 'rgba(255,255,255,0.2)',
+                        strokeWidth: 1
+                    });
+                    prevBtn.data = { action: 'prevPage' };
+                    new paper.PointText({
+                        point: new paper.Point(pvL + navBtnW / 2, botY + btnH * 0.65),
+                        content: '◀',
+                        fillColor: 'rgba(255,255,255,0.6)',
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: btnH * 0.4,
+                        justification: 'center'
+                    }).data = { action: 'prevPage' };
+                }
+            }
         });
     }
 
@@ -1344,11 +1488,15 @@
             if (uiHit) {
                 if (uiHit.action === 'category') {
                     appMode = 'drillList';
-                    showDrillList(uiHit.categoryId);
+                    showDrillList(uiHit.categoryId, 0);
                 } else if (uiHit.action === 'loadDrill') {
                     startDrill(uiHit.drillIdx);
                 } else if (uiHit.action === 'backToMenu') {
                     showMenu();
+                } else if (uiHit.action === 'prevPage') {
+                    showDrillList(drillListCatId, drillListPage - 1);
+                } else if (uiHit.action === 'nextPage') {
+                    showDrillList(drillListCatId, drillListPage + 1);
                 } else if (uiHit.action === 'freeplay') {
                     appMode = 'drill';
                     activeDrills = null;
