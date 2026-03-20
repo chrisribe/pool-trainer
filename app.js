@@ -1,6 +1,6 @@
 /* ================================================================
    Pool Trainer — app.js
-   Step 1: Table renderer  |  Step 2: Ball placement
+   Step 1: Table renderer | Step 2: Ball placement | Step 3: Shot lines
    ================================================================ */
 
 (function () {
@@ -15,6 +15,7 @@
 
     // ── Layers ──
     var tableLayer = new paper.Layer({ name: 'table' });
+    var shotLayer  = new paper.Layer({ name: 'shots' });
     var ballLayer  = new paper.Layer({ name: 'balls' });
 
     // ── Ball state ──
@@ -428,6 +429,7 @@
     paper.view.onResize = function () {
         drawTable();
         redrawBalls();
+        clearShotLines();
     };
 
     // ══════════════════════════════════════════════════════════════
@@ -607,10 +609,18 @@
         placeBall(0, cx, rail + ph * 0.75);
     }
 
-    // ── Drag-and-drop ──
+    // ══════════════════════════════════════════════════════════════
+    //  SHOT VISUALIZATION (Step 3)
+    // ══════════════════════════════════════════════════════════════
 
+    var aimState = null;  // { aiming: true } while dragging from cue ball
+
+    function clearShotLines() {
+        shotLayer.removeChildren();
+    }
+
+    // Hit test: find a ball under the canvas point
     function hitBall(canvasPoint) {
-        // Check all balls for hit
         var hit = null;
         var nums = Object.keys(balls);
         for (var i = nums.length - 1; i >= 0; i--) {
@@ -618,7 +628,7 @@
             if (!b.group) continue;
             var center = T(b.tableX, b.tableY);
             var dist = canvasPoint.getDistance(center);
-            if (dist <= S(cfg.ballRadius) * 1.4) {  // generous touch target
+            if (dist <= S(cfg.ballRadius) * 1.4) {
                 hit = b;
                 break;
             }
@@ -626,22 +636,296 @@
         return hit;
     }
 
+    // Get all pocket target points (center of each pocket opening at cushion line)
+    function getPocketTargets() {
+        var rail = cfg.railWidth;
+        var pw = cfg.playWidth;
+        var ph = cfg.playHeight;
+        return [
+            { x: rail,      y: rail,          name: 'TL' },
+            { x: rail + pw, y: rail,          name: 'TR' },
+            { x: rail,      y: rail + ph,     name: 'BL' },
+            { x: rail + pw, y: rail + ph,     name: 'BR' },
+            { x: rail,      y: rail + ph / 2, name: 'ML' },
+            { x: rail + pw, y: rail + ph / 2, name: 'MR' }
+        ];
+    }
+
+    // Find the first object ball the aim line intersects
+    // Returns { ball, hitPoint, distance } or null
+    function findTargetBall(cueTx, cueTy, aimDx, aimDy) {
+        var r = cfg.ballRadius;
+        var contactDist = r * 2;  // center-to-center at contact
+        var best = null;
+
+        Object.keys(balls).forEach(function (k) {
+            var b = balls[+k];
+            if (b.num === 0) return; // skip cue ball
+
+            // Vector from cue ball to this ball
+            var dx = b.tableX - cueTx;
+            var dy = b.tableY - cueTy;
+
+            // Project onto aim direction
+            var aimLen = Math.sqrt(aimDx * aimDx + aimDy * aimDy);
+            if (aimLen < 0.001) return;
+            var nx = aimDx / aimLen;
+            var ny = aimDy / aimLen;
+
+            var proj = dx * nx + dy * ny;
+            if (proj <= 0) return; // ball is behind aim direction
+
+            // Perpendicular distance from aim line to ball center
+            var perpX = dx - proj * nx;
+            var perpY = dy - proj * ny;
+            var perp = Math.sqrt(perpX * perpX + perpY * perpY);
+
+            if (perp > contactDist) return; // aim line misses this ball
+
+            // Distance along aim line to contact point
+            var offset = Math.sqrt(contactDist * contactDist - perp * perp);
+            var hitDist = proj - offset;
+
+            if (hitDist < 0) return;
+
+            if (!best || hitDist < best.distance) {
+                best = {
+                    ball: b,
+                    distance: hitDist,
+                    hitX: cueTx + nx * hitDist,
+                    hitY: cueTy + ny * hitDist
+                };
+            }
+        });
+
+        return best;
+    }
+
+    // Find best pocket for an object ball given the cut direction
+    function findBestPocket(objTx, objTy, objDx, objDy) {
+        var pockets = getPocketTargets();
+        var best = null;
+        var bestAngle = Infinity;
+
+        var dirLen = Math.sqrt(objDx * objDx + objDy * objDy);
+        if (dirLen < 0.001) return null;
+        var nx = objDx / dirLen;
+        var ny = objDy / dirLen;
+
+        pockets.forEach(function (p) {
+            var px = p.x - objTx;
+            var py = p.y - objTy;
+            var pLen = Math.sqrt(px * px + py * py);
+            if (pLen < 0.5) return;
+            var pnx = px / pLen;
+            var pny = py / pLen;
+
+            // Angle between object ball direction and pocket direction
+            var dot = nx * pnx + ny * pny;
+            var angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+
+            if (angle < bestAngle) {
+                bestAngle = angle;
+                best = { pocket: p, distance: pLen, angle: angle };
+            }
+        });
+
+        // Only return if pocket is within ~90° of the ball's path
+        return (best && best.angle < Math.PI / 2) ? best : null;
+    }
+
+    // Draw the shot visualization
+    function drawShotLines(cueTx, cueTy, aimTx, aimTy) {
+        clearShotLines();
+        shotLayer.activate();
+
+        var aimDx = aimTx - cueTx;
+        var aimDy = aimTy - cueTy;
+        var aimLen = Math.sqrt(aimDx * aimDx + aimDy * aimDy);
+        if (aimLen < 0.1) return;
+
+        var nx = aimDx / aimLen;
+        var ny = aimDy / aimLen;
+
+        // 1. Find target ball
+        var target = findTargetBall(cueTx, cueTy, aimDx, aimDy);
+
+        if (!target) {
+            // No ball hit — just draw aim line to rail
+            var extLen = 200; // far enough to hit any rail
+            new paper.Path.Line({
+                from: T(cueTx, cueTy),
+                to: T(cueTx + nx * extLen, cueTy + ny * extLen),
+                strokeColor: colors.aimLine,
+                strokeWidth: S(0.12),
+                dashArray: [S(0.5), S(0.5)]
+            });
+            return;
+        }
+
+        // 2. Aim line: cue ball → ghost ball position (contact point)
+        new paper.Path.Line({
+            from: T(cueTx, cueTy),
+            to: T(target.hitX, target.hitY),
+            strokeColor: colors.aimLine,
+            strokeWidth: S(0.12)
+        });
+
+        // 3. Ghost ball at contact point
+        new paper.Path.Circle({
+            center: T(target.hitX, target.hitY),
+            radius: S(cfg.ballRadius),
+            strokeColor: 'rgba(255,255,255,0.5)',
+            strokeWidth: S(0.1),
+            dashArray: [S(0.3), S(0.3)],
+            fillColor: null
+        });
+
+        // 4. Object ball direction: from object ball center, pushed by contact
+        var objBall = target.ball;
+        var objDx = objBall.tableX - target.hitX;
+        var objDy = objBall.tableY - target.hitY;
+        var objLen = Math.sqrt(objDx * objDx + objDy * objDy);
+        if (objLen < 0.001) {
+            // Straight-on hit → object ball goes in aim direction
+            objDx = nx;
+            objDy = ny;
+        } else {
+            objDx /= objLen;
+            objDy /= objLen;
+        }
+
+        // Find best pocket for object ball path
+        var pocketHit = findBestPocket(objBall.tableX, objBall.tableY, objDx, objDy);
+
+        // Always draw the raw deflection direction first (short line)
+        var rawLen = 8;
+        new paper.Path.Line({
+            from: T(objBall.tableX, objBall.tableY),
+            to: T(objBall.tableX + objDx * rawLen, objBall.tableY + objDy * rawLen),
+            strokeColor: colors.objBallPath,
+            strokeWidth: S(0.15),
+            opacity: 0.6
+        });
+
+        if (pocketHit) {
+            // Object ball path to pocket (solid line over the raw direction)
+            new paper.Path.Line({
+                from: T(objBall.tableX, objBall.tableY),
+                to: T(pocketHit.pocket.x, pocketHit.pocket.y),
+                strokeColor: colors.objBallPath,
+                strokeWidth: S(0.15)
+            });
+
+            // Small circle at pocket to mark target
+            new paper.Path.Circle({
+                center: T(pocketHit.pocket.x, pocketHit.pocket.y),
+                radius: S(0.5),
+                strokeColor: colors.objBallPath,
+                strokeWidth: S(0.12),
+                fillColor: null
+            });
+        } else {
+            // No good pocket — extend the raw direction further (dashed)
+            var extObjLen = 40;
+            new paper.Path.Line({
+                from: T(objBall.tableX + objDx * rawLen, objBall.tableY + objDy * rawLen),
+                to: T(objBall.tableX + objDx * extObjLen, objBall.tableY + objDy * extObjLen),
+                strokeColor: colors.objBallPath,
+                strokeWidth: S(0.12),
+                dashArray: [S(0.4), S(0.4)]
+            });
+        }
+
+        // 5. Cue ball path after contact (deflection)
+        // For center-ball hit (no english), cue ball deflects at 90° to the
+        // object ball direction (the "tangent line" / "90° rule")
+        var cueDx, cueDy;
+        if (objLen < 0.001) {
+            // Dead straight shot — cue ball stops (stun)
+            cueDx = 0;
+            cueDy = 0;
+        } else {
+            // 90° to object ball direction (perpendicular, preserving cue ball's forward momentum side)
+            // The tangent is perpendicular to the line connecting ghost ball → object ball
+            cueDx = -objDy;
+            cueDy = objDx;
+
+            // Pick the correct perpendicular direction (same side as cue's original momentum)
+            var dot = cueDx * nx + cueDy * ny;
+            if (dot < 0) {
+                cueDx = -cueDx;
+                cueDy = -cueDy;
+            }
+        }
+
+        if (Math.abs(cueDx) > 0.001 || Math.abs(cueDy) > 0.001) {
+            var cuePathLen = 20;
+            new paper.Path.Line({
+                from: T(target.hitX, target.hitY),
+                to: T(target.hitX + cueDx * cuePathLen, target.hitY + cueDy * cuePathLen),
+                strokeColor: colors.cueBallPath,
+                strokeWidth: S(0.12),
+                dashArray: [S(0.3), S(0.3)]
+            });
+        }
+
+        // 6. Cut angle indicator text
+        // Angle between aim direction and cue-to-object-ball line
+        var cutAngle = Math.acos(Math.max(-1, Math.min(1, nx * objDx + ny * objDy)));
+        var cutDeg = Math.round(cutAngle * 180 / Math.PI);
+
+        // Place label near the contact point, offset slightly
+        var labelX = target.hitX + 2;
+        var labelY = target.hitY - 2;
+        new paper.PointText({
+            point: T(labelX, labelY),
+            content: cutDeg + '°',
+            fillColor: colors.text,
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: S(1.5),
+            justification: 'left'
+        });
+    }
+
+    // ── Pointer tool for aiming + drag ──
+
     var pointerTool = new paper.Tool();
     pointerTool.activate();
 
     pointerTool.onMouseDown = function (event) {
         var b = hitBall(event.point);
         if (b) {
-            dragTarget = b;
-            var center = T(b.tableX, b.tableY);
-            dragOffset = new paper.Point(
-                event.point.x - center.x,
-                event.point.y - center.y
-            );
+            if (b.num === 0 && Object.keys(balls).length > 1) {
+                // Clicking cue ball = start aiming (if other balls exist)
+                aimState = { aiming: true };
+                var tablePos = invT(event.point);
+                drawShotLines(b.tableX, b.tableY, tablePos.x, tablePos.y);
+            } else {
+                // Dragging any ball
+                dragTarget = b;
+                var center = T(b.tableX, b.tableY);
+                dragOffset = new paper.Point(
+                    event.point.x - center.x,
+                    event.point.y - center.y
+                );
+            }
+        } else {
+            // Clicked empty space — clear shot lines
+            clearShotLines();
+            aimState = null;
         }
     };
 
     pointerTool.onMouseDrag = function (event) {
+        if (aimState && aimState.aiming && balls[0]) {
+            // Aiming: update shot lines based on pointer position
+            var tablePos = invT(event.point);
+            drawShotLines(balls[0].tableX, balls[0].tableY, tablePos.x, tablePos.y);
+            return;
+        }
+
         if (!dragTarget) return;
         var adjusted = new paper.Point(
             event.point.x - dragOffset.x,
@@ -651,15 +935,15 @@
         var clamped = clampToPlayingSurface(tablePos.x, tablePos.y);
         dragTarget.tableX = clamped.x;
         dragTarget.tableY = clamped.y;
-        // Move group visually
-        var newCenter = T(clamped.x, clamped.y);
-        var oldCenter = T(0, 0); // we need delta, so rebuild is simpler for now
         dragTarget.group.remove();
         ballLayer.activate();
         dragTarget.group = createBallGroup(dragTarget.num, clamped.x, clamped.y);
     };
 
     pointerTool.onMouseUp = function () {
+        if (aimState) {
+            aimState = null;
+        }
         dragTarget = null;
         dragOffset = null;
     };
