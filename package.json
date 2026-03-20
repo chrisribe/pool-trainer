@@ -1,0 +1,11 @@
+{
+  "name": "pool-trainer",
+  "version": "1.0.0",
+  "description": "Interactive pool/billiards training drills",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "license": "ISC"
+}
