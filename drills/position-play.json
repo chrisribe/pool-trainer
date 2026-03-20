@@ -1,0 +1,61 @@
+[
+  {
+    "name": "Stop Shot",
+    "description": "Stun the cue ball so it stops dead after contact. Center-low hit, medium speed.",
+    "difficulty": 2,
+    "balls": [
+      { "num": 0, "x": 22, "y": 58 },
+      { "num": 1, "x": 22, "y": 30 }
+    ]
+  },
+  {
+    "name": "Follow Shot",
+    "description": "Cue ball follows through after contact. Hit above center — cue ball should reach the far rail.",
+    "difficulty": 2,
+    "balls": [
+      { "num": 0, "x": 22, "y": 58 },
+      { "num": 1, "x": 22, "y": 35 }
+    ]
+  },
+  {
+    "name": "Draw Shot",
+    "description": "Pull the cue ball back after contact. Hit low with a smooth follow-through.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 55 },
+      { "num": 1, "x": 22, "y": 30 }
+    ]
+  },
+  {
+    "name": "Two-Ball Position: Follow",
+    "description": "Pot the 1-ball into the corner and use follow to get position on the 2-ball.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 60 },
+      { "num": 1, "x": 22, "y": 30 },
+      { "num": 2, "x": 14, "y": 12 }
+    ]
+  },
+  {
+    "name": "Three-Ball Run",
+    "description": "Run three balls in order. Plan your cue ball position two shots ahead.",
+    "difficulty": 4,
+    "balls": [
+      { "num": 0, "x": 22, "y": 66 },
+      { "num": 1, "x": 18, "y": 44 },
+      { "num": 2, "x": 33, "y": 25 },
+      { "num": 3, "x": 11, "y": 12 }
+    ]
+  },
+  {
+    "name": "L-Shaped Position Play",
+    "description": "Navigate the cue ball in an L-shape. Draw on shot 1, follow on shot 2.",
+    "difficulty": 4,
+    "balls": [
+      { "num": 0, "x": 11, "y": 66 },
+      { "num": 1, "x": 11, "y": 44 },
+      { "num": 2, "x": 33, "y": 44 },
+      { "num": 3, "x": 33, "y": 16 }
+    ]
+  }
+]

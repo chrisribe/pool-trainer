@@ -1,6 +1,6 @@
 /* ================================================================
    Pool Trainer — app.js
-   Step 1: Table renderer | Step 2: Ball placement | Step 3: Shot lines
+   Steps 1-5: Table | Balls | Shot lines | Drill save/load | Library
    ================================================================ */
 
 (function () {
@@ -17,6 +17,10 @@
     var tableLayer = new paper.Layer({ name: 'table' });
     var shotLayer  = new paper.Layer({ name: 'shots' });
     var ballLayer  = new paper.Layer({ name: 'balls' });
+    var uiLayer    = new paper.Layer({ name: 'ui' });
+
+    // ── App state ──
+    var appMode = 'menu';  // 'menu' | 'drill'
 
     // ── Ball state ──
     // balls[number] = { num, tableX, tableY, group (Paper.js Group) }
@@ -430,6 +434,9 @@
         drawTable();
         redrawBalls();
         clearShotLines();
+        if (appMode === 'menu') showMenu();
+        else if (appMode === 'drillList') showMenu(); // reset to menu on resize
+        else if (appMode === 'drill' && activeDrills) showDrillHUD();
     };
 
     // ══════════════════════════════════════════════════════════════
@@ -841,13 +848,15 @@
         // For center-ball hit (no english), cue ball deflects at 90° to the
         // object ball direction (the "tangent line" / "90° rule")
         var cueDx, cueDy;
-        if (objLen < 0.001) {
-            // Dead straight shot — cue ball stops (stun)
+        // Check cut angle — nearly straight shots (< 5°) mean cue ball stops
+        var cutDot = nx * objDx + ny * objDy;
+        var isNearlyStraight = cutDot > 0.996; // cos(5°) ≈ 0.996
+        if (objLen < 0.001 || isNearlyStraight) {
+            // Dead/near-straight shot — cue ball stops (stun)
             cueDx = 0;
             cueDy = 0;
         } else {
             // 90° to object ball direction (perpendicular, preserving cue ball's forward momentum side)
-            // The tangent is perpendicular to the line connecting ghost ball → object ball
             cueDx = -objDy;
             cueDy = objDx;
 
@@ -889,30 +898,489 @@
         });
     }
 
-    // ── Pointer tool for aiming + drag ──
+    // ══════════════════════════════════════════════════════════════
+    //  DRILL SAVE/LOAD (Step 4)
+    // ══════════════════════════════════════════════════════════════
 
+    // Pointer tool — created once, handlers assigned later in Step 5
     var pointerTool = new paper.Tool();
     pointerTool.activate();
 
+    // Serialize current ball layout to a drill object
+    function serializeDrill(name, description, difficulty) {
+        var ballList = [];
+        Object.keys(balls).forEach(function (k) {
+            var b = balls[+k];
+            ballList.push({
+                num: b.num,
+                x: Math.round((b.tableX - cfg.railWidth) * 100) / 100,
+                y: Math.round((b.tableY - cfg.railWidth) * 100) / 100
+            });
+        });
+        return {
+            name: name || 'Untitled Drill',
+            description: description || '',
+            difficulty: difficulty || 1,
+            balls: ballList
+        };
+    }
+
+    // Load a drill object onto the table
+    function loadDrill(drill) {
+        clearBalls();
+        clearShotLines();
+        var rail = cfg.railWidth;
+        drill.balls.forEach(function (b) {
+            placeBall(b.num, rail + b.x, rail + b.y);
+        });
+
+        // Auto-show aim line: use explicit aimLine, or compute proper aim
+        // through the ghost ball position that pots the first object ball
+        var cue = balls[0];
+        if (!cue) return;
+
+        if (drill.aimLine) {
+            drawShotLines(cue.tableX, cue.tableY, rail + drill.aimLine.x, rail + drill.aimLine.y);
+        } else {
+            // Find first object ball
+            var ob = null;
+            for (var i = 0; i < drill.balls.length; i++) {
+                if (drill.balls[i].num !== 0) {
+                    ob = balls[drill.balls[i].num];
+                    break;
+                }
+            }
+            if (!ob) return;
+
+            // Find the best pocket for this object ball from the cue ball's perspective
+            var cueToBallDx = ob.tableX - cue.tableX;
+            var cueToBallDy = ob.tableY - cue.tableY;
+            var pocket = findBestPocket(ob.tableX, ob.tableY, cueToBallDx, cueToBallDy);
+
+            if (pocket) {
+                // Compute ghost ball position: offset from object ball, opposite the pocket direction
+                var pDx = pocket.pocket.x - ob.tableX;
+                var pDy = pocket.pocket.y - ob.tableY;
+                var pLen = Math.sqrt(pDx * pDx + pDy * pDy);
+                var r2 = cfg.ballRadius * 2;
+                var ghostX = ob.tableX - (pDx / pLen) * r2;
+                var ghostY = ob.tableY - (pDy / pLen) * r2;
+                drawShotLines(cue.tableX, cue.tableY, ghostX, ghostY);
+            } else {
+                // No good pocket — just aim at the ball center
+                drawShotLines(cue.tableX, cue.tableY, ob.tableX, ob.tableY);
+            }
+        }
+    }
+
+    // Download current layout as JSON
+    function exportDrill() {
+        var drill = serializeDrill('Custom Drill', '', 1);
+        var json = JSON.stringify(drill, null, 2);
+        var blob = new Blob([json], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'drill.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  DRILL LIBRARY & MENU UI (Step 5)
+    // ══════════════════════════════════════════════════════════════
+
+    var drillCache = {};       // category id → array of drills
+    var activeDrills = null;   // currently loaded drill array
+    var activeDrillIdx = 0;    // current drill index within the set
+    var activeCategory = null; // current category name
+
+    // Fetch a drill JSON file (with cache)
+    function fetchDrills(catalogEntry, callback) {
+        if (drillCache[catalogEntry.id]) {
+            callback(drillCache[catalogEntry.id]);
+            return;
+        }
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', catalogEntry.file, true);
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                var data = JSON.parse(xhr.responseText);
+                drillCache[catalogEntry.id] = data;
+                callback(data);
+            }
+        };
+        xhr.send();
+    }
+
+    // ── Menu rendering (projected on table) ──
+
+    function showMenu() {
+        appMode = 'menu';
+        clearBalls();
+        clearShotLines();
+        uiLayer.removeChildren();
+        uiLayer.activate();
+
+        var vw = paper.view.size.width;
+        var vh = paper.view.size.height;
+
+        // Title
+        new paper.PointText({
+            point: new paper.Point(vw / 2, vh * 0.12),
+            content: 'POOL TRAINER',
+            fillColor: '#ffffff',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: Math.min(vw, vh) * 0.06,
+            justification: 'center'
+        });
+
+        // Subtitle
+        new paper.PointText({
+            point: new paper.Point(vw / 2, vh * 0.18),
+            content: 'Select a drill category',
+            fillColor: 'rgba(255,255,255,0.5)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: Math.min(vw, vh) * 0.025,
+            justification: 'center'
+        });
+
+        // Category buttons
+        var catalog = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
+        var btnW = Math.min(vw * 0.5, 400);
+        var btnH = Math.min(vh * 0.08, 60);
+        var gap = btnH * 0.4;
+        var startY = vh * 0.28;
+
+        catalog.forEach(function (cat, i) {
+            var y = startY + i * (btnH + gap);
+            var x = vw / 2;
+
+            // Button background
+            var btn = new paper.Path.Rectangle({
+                from: new paper.Point(x - btnW / 2, y),
+                to: new paper.Point(x + btnW / 2, y + btnH),
+                radius: 8,
+                fillColor: 'rgba(255,255,255,0.08)',
+                strokeColor: 'rgba(255,255,255,0.3)',
+                strokeWidth: 1
+            });
+            btn.data = { action: 'category', categoryId: cat.id };
+
+            // Button label
+            var label = new paper.PointText({
+                point: new paper.Point(x, y + btnH * 0.65),
+                content: cat.icon + '  ' + cat.name,
+                fillColor: '#ffffff',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                fontSize: btnH * 0.4,
+                justification: 'center'
+            });
+            label.data = { action: 'category', categoryId: cat.id };
+        });
+
+        // Free play button
+        var fpY = startY + catalog.length * (btnH + gap) + gap;
+        var fpBtn = new paper.Path.Rectangle({
+            from: new paper.Point(vw / 2 - btnW / 2, fpY),
+            to: new paper.Point(vw / 2 + btnW / 2, fpY + btnH),
+            radius: 8,
+            fillColor: 'rgba(0,229,255,0.1)',
+            strokeColor: 'rgba(0,229,255,0.4)',
+            strokeWidth: 1
+        });
+        fpBtn.data = { action: 'freeplay' };
+
+        new paper.PointText({
+            point: new paper.Point(vw / 2, fpY + btnH * 0.65),
+            content: '🎱  Free Play',
+            fillColor: '#00e5ff',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: btnH * 0.4,
+            justification: 'center'
+        }).data = { action: 'freeplay' };
+
+        // Keyboard hint
+        new paper.PointText({
+            point: new paper.Point(vw / 2, vh * 0.93),
+            content: 'Press F for fullscreen',
+            fillColor: 'rgba(255,255,255,0.25)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: Math.min(vw, vh) * 0.02,
+            justification: 'center'
+        });
+    }
+
+    // Show drill list for a category
+    function showDrillList(categoryId) {
+        var cat = null;
+        var catalog = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
+        for (var i = 0; i < catalog.length; i++) {
+            if (catalog[i].id === categoryId) { cat = catalog[i]; break; }
+        }
+        if (!cat) return;
+
+        fetchDrills(cat, function (drills) {
+            activeCategory = cat.name;
+            activeDrills = drills;
+            activeDrillIdx = 0;
+
+            uiLayer.removeChildren();
+            uiLayer.activate();
+
+            var vw = paper.view.size.width;
+            var vh = paper.view.size.height;
+
+            // Title
+            new paper.PointText({
+                point: new paper.Point(vw / 2, vh * 0.1),
+                content: cat.icon + ' ' + cat.name,
+                fillColor: '#ffffff',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                fontSize: Math.min(vw, vh) * 0.045,
+                justification: 'center'
+            });
+
+            var btnW = Math.min(vw * 0.55, 450);
+            var btnH = Math.min(vh * 0.065, 50);
+            var gap = btnH * 0.3;
+            var startY = vh * 0.18;
+
+            drills.forEach(function (drill, j) {
+                var y = startY + j * (btnH + gap);
+                var x = vw / 2;
+
+                var stars = '';
+                for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '★' : '☆';
+
+                var btn = new paper.Path.Rectangle({
+                    from: new paper.Point(x - btnW / 2, y),
+                    to: new paper.Point(x + btnW / 2, y + btnH),
+                    radius: 6,
+                    fillColor: 'rgba(255,255,255,0.06)',
+                    strokeColor: 'rgba(255,255,255,0.2)',
+                    strokeWidth: 1
+                });
+                btn.data = { action: 'loadDrill', drillIdx: j };
+
+                new paper.PointText({
+                    point: new paper.Point(x - btnW * 0.42, y + btnH * 0.65),
+                    content: drill.name,
+                    fillColor: '#ffffff',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.38,
+                    justification: 'left'
+                }).data = { action: 'loadDrill', drillIdx: j };
+
+                new paper.PointText({
+                    point: new paper.Point(x + btnW * 0.42, y + btnH * 0.65),
+                    content: stars,
+                    fillColor: '#ffee00',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.32,
+                    justification: 'right'
+                }).data = { action: 'loadDrill', drillIdx: j };
+            });
+
+            // Back button
+            var backY = startY + drills.length * (btnH + gap) + gap;
+            var backBtn = new paper.Path.Rectangle({
+                from: new paper.Point(vw / 2 - btnW / 2, backY),
+                to: new paper.Point(vw / 2 + btnW / 2, backY + btnH),
+                radius: 6,
+                fillColor: 'rgba(255,255,255,0.04)',
+                strokeColor: 'rgba(255,255,255,0.2)',
+                strokeWidth: 1
+            });
+            backBtn.data = { action: 'backToMenu' };
+
+            new paper.PointText({
+                point: new paper.Point(vw / 2, backY + btnH * 0.65),
+                content: '← Back to Menu',
+                fillColor: 'rgba(255,255,255,0.6)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: btnH * 0.38,
+                justification: 'center'
+            }).data = { action: 'backToMenu' };
+        });
+    }
+
+    // ── Drill HUD (shown during drill mode) ──
+
+    function showDrillHUD() {
+        uiLayer.removeChildren();
+        uiLayer.activate();
+
+        if (!activeDrills || !activeDrills[activeDrillIdx]) return;
+        var drill = activeDrills[activeDrillIdx];
+        var rail = cfg.railWidth;
+        var pw = cfg.playWidth;
+        var ph = cfg.playHeight;
+
+        // Get the screen bounding box of the playing surface
+        var c1 = T(rail, rail);
+        var c2 = T(rail + pw, rail + ph);
+        var sL = Math.min(c1.x, c2.x);     // screen left
+        var sR = Math.max(c1.x, c2.x);     // screen right
+        var sT = Math.min(c1.y, c2.y);     // screen top
+        var sB = Math.max(c1.y, c2.y);     // screen bottom
+        var margin = S(2);
+        var fs = S(1.4);
+
+        // Drill name — screen top-left of felt
+        new paper.PointText({
+            point: new paper.Point(sL + margin, sT + margin + fs),
+            content: drill.name,
+            fillColor: '#ffffff',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: fs * 1.1,
+            justification: 'left'
+        });
+
+        // Description — below name
+        if (drill.description) {
+            new paper.PointText({
+                point: new paper.Point(sL + margin, sT + margin + fs * 2.8),
+                content: drill.description,
+                fillColor: 'rgba(255,255,255,0.4)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: fs * 0.65,
+                justification: 'left'
+            });
+        }
+
+        // Step counter — screen top-right of felt
+        new paper.PointText({
+            point: new paper.Point(sR - margin, sT + margin + fs),
+            content: (activeDrillIdx + 1) + ' / ' + activeDrills.length,
+            fillColor: 'rgba(255,255,255,0.6)',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: fs * 1.0,
+            justification: 'right'
+        });
+
+        // Category name — below counter
+        if (activeCategory) {
+            new paper.PointText({
+                point: new paper.Point(sR - margin, sT + margin + fs * 2.5),
+                content: activeCategory,
+                fillColor: 'rgba(255,255,255,0.3)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: fs * 0.6,
+                justification: 'right'
+            });
+        }
+
+        // Difficulty stars — below category
+        var stars = '';
+        for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '★' : '☆';
+        new paper.PointText({
+            point: new paper.Point(sR - margin, sT + margin + fs * 3.8),
+            content: stars,
+            fillColor: '#ffee00',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: fs * 0.65,
+            justification: 'right'
+        });
+
+        // Navigation hints — screen bottom-center of felt
+        new paper.PointText({
+            point: new paper.Point((sL + sR) / 2, sB - margin),
+            content: '→ Next    ← Prev    M Menu',
+            fillColor: 'rgba(255,255,255,0.2)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: fs * 0.55,
+            justification: 'center'
+        });
+    }
+
+    // ── Drill navigation ──
+
+    function startDrill(idx) {
+        appMode = 'drill';
+        activeDrillIdx = idx;
+        loadDrill(activeDrills[idx]);
+        showDrillHUD();
+    }
+
+    function nextDrill() {
+        if (!activeDrills) return;
+        if (activeDrillIdx < activeDrills.length - 1) {
+            startDrill(activeDrillIdx + 1);
+        }
+    }
+
+    function prevDrill() {
+        if (!activeDrills) return;
+        if (activeDrillIdx > 0) {
+            startDrill(activeDrillIdx - 1);
+        }
+    }
+
+    // ── UI hit testing ──
+
+    function hitUI(canvasPoint) {
+        var hits = uiLayer.hitTestAll(canvasPoint, { fill: true, stroke: true, tolerance: 5 });
+        for (var i = 0; i < hits.length; i++) {
+            var item = hits[i].item;
+            while (item && !item.data.action) { item = item.parent; }
+            if (item && item.data.action) return item.data;
+        }
+        return null;
+    }
+
+    // ── Pointer tool (handles menu clicks + drill aiming + ball drag) ──
+
     pointerTool.onMouseDown = function (event) {
+        // Check UI layer first (menu buttons)
+        if (appMode === 'menu' || appMode === 'drillList') {
+            var uiHit = hitUI(event.point);
+            if (uiHit) {
+                if (uiHit.action === 'category') {
+                    appMode = 'drillList';
+                    showDrillList(uiHit.categoryId);
+                } else if (uiHit.action === 'loadDrill') {
+                    startDrill(uiHit.drillIdx);
+                } else if (uiHit.action === 'backToMenu') {
+                    showMenu();
+                } else if (uiHit.action === 'freeplay') {
+                    appMode = 'drill';
+                    activeDrills = null;
+                    activeDrillIdx = 0;
+                    activeCategory = null;
+                    clearBalls();
+                    clearShotLines();
+                    uiLayer.removeChildren();
+                    rack9Ball();
+                }
+                return;
+            }
+        }
+
+        // In drill mode — dragging balls or aiming
         var b = hitBall(event.point);
         if (b) {
-            if (b.num === 0 && Object.keys(balls).length > 1) {
-                // Clicking cue ball = start aiming (if other balls exist)
-                aimState = { aiming: true };
-                var tablePos = invT(event.point);
-                drawShotLines(b.tableX, b.tableY, tablePos.x, tablePos.y);
-            } else {
-                // Dragging any ball
-                dragTarget = b;
-                var center = T(b.tableX, b.tableY);
-                dragOffset = new paper.Point(
-                    event.point.x - center.x,
-                    event.point.y - center.y
-                );
-            }
+            // Click on any ball (including cue) = drag to reposition
+            dragTarget = b;
+            var center = T(b.tableX, b.tableY);
+            dragOffset = new paper.Point(
+                event.point.x - center.x,
+                event.point.y - center.y
+            );
+            clearShotLines();
+            aimState = null;
+        } else if (balls[0] && Object.keys(balls).length > 1) {
+            // Click on empty table with cue ball present = aim from cue ball
+            aimState = { aiming: true };
+            var tablePos = invT(event.point);
+            drawShotLines(balls[0].tableX, balls[0].tableY, tablePos.x, tablePos.y);
         } else {
-            // Clicked empty space — clear shot lines
             clearShotLines();
             aimState = null;
         }
@@ -920,7 +1388,6 @@
 
     pointerTool.onMouseDrag = function (event) {
         if (aimState && aimState.aiming && balls[0]) {
-            // Aiming: update shot lines based on pointer position
             var tablePos = invT(event.point);
             drawShotLines(balls[0].tableX, balls[0].tableY, tablePos.x, tablePos.y);
             return;
@@ -941,22 +1408,31 @@
     };
 
     pointerTool.onMouseUp = function () {
-        if (aimState) {
-            aimState = null;
-        }
+        if (aimState) aimState = null;
         dragTarget = null;
         dragOffset = null;
     };
 
     // ── Keyboard shortcuts ──
     document.addEventListener('keydown', function (e) {
-        if (e.key === '9') rack9Ball();
-        if (e.key === '8') rack8Ball();
-        if (e.key === 'c' || e.key === 'C') clearBalls();
+        if (e.key === 'f' || e.key === 'F') enterFullscreen();
+
+        if (appMode === 'drill') {
+            if (e.key === 'ArrowRight' || e.key === ' ') nextDrill();
+            if (e.key === 'ArrowLeft') prevDrill();
+            if (e.key === 'm' || e.key === 'M' || e.key === 'Escape') showMenu();
+            if (e.key === '9') { activeDrills = null; rack9Ball(); uiLayer.removeChildren(); }
+            if (e.key === '8') { activeDrills = null; rack8Ball(); uiLayer.removeChildren(); }
+            if (e.key === 'c' || e.key === 'C') clearBalls();
+            if (e.key === 'e' || e.key === 'E') exportDrill();
+        } else if (appMode === 'menu' || appMode === 'drillList') {
+            if (e.key === 'Escape' && appMode === 'drillList') showMenu();
+        }
     });
 
-    // ── Initial draw ──
+    // ── Initial draw — start on menu ──
     drawTable();
+    showMenu();
     paper.view.draw();
 
 })();

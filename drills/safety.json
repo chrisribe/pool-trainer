@@ -1,0 +1,33 @@
+[
+  {
+    "name": "Basic Safety",
+    "description": "Hide the cue ball behind the 2-ball after potting the 1-ball. No direct shot for opponent.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 66 },
+      { "num": 1, "x": 22, "y": 50 },
+      { "num": 2, "x": 22, "y": 22 },
+      { "num": 9, "x": 36, "y": 36 }
+    ]
+  },
+  {
+    "name": "Rail Safety",
+    "description": "Send the cue ball to the far rail while leaving the object ball safe. Two-way shot.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 16, "y": 60 },
+      { "num": 1, "x": 32, "y": 40 }
+    ]
+  },
+  {
+    "name": "Snooker Behind Ball",
+    "description": "Play the cue ball behind a blocker. Control speed to land tight.",
+    "difficulty": 4,
+    "balls": [
+      { "num": 0, "x": 22, "y": 66 },
+      { "num": 1, "x": 12, "y": 50 },
+      { "num": 2, "x": 22, "y": 30 },
+      { "num": 9, "x": 36, "y": 18 }
+    ]
+  }
+]

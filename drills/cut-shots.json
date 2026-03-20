@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Quarter-Ball Cut Left",
+    "description": "Gentle cut to the top-left corner. Aim to hit 1/4 of the object ball.",
+    "difficulty": 2,
+    "balls": [
+      { "num": 0, "x": 22, "y": 55 },
+      { "num": 1, "x": 14, "y": 30 }
+    ]
+  },
+  {
+    "name": "Quarter-Ball Cut Right",
+    "description": "Mirror of the left cut — same angle, opposite side, top-right corner.",
+    "difficulty": 2,
+    "balls": [
+      { "num": 0, "x": 22, "y": 55 },
+      { "num": 1, "x": 30, "y": 30 }
+    ]
+  },
+  {
+    "name": "Half-Ball Cut",
+    "description": "Classic 30-degree cut into the top-left corner. See half the object ball past your cue tip.",
+    "difficulty": 2,
+    "balls": [
+      { "num": 0, "x": 22, "y": 55 },
+      { "num": 1, "x": 10, "y": 25 }
+    ]
+  },
+  {
+    "name": "Thin Cut to Side",
+    "description": "Sharp cut angle into the side pocket. Feather the edge of the object ball.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 22, "y": 60 },
+      { "num": 1, "x": 10, "y": 48 }
+    ]
+  },
+  {
+    "name": "Cross-Corner Cut",
+    "description": "Diagonal cut across the table into the far corner pocket.",
+    "difficulty": 3,
+    "balls": [
+      { "num": 0, "x": 10, "y": 66 },
+      { "num": 1, "x": 28, "y": 36 }
+    ]
+  },
+  {
+    "name": "Progressive Cuts",
+    "description": "Three object balls at increasing cut angles. Pot each into the top-left corner.",
+    "difficulty": 4,
+    "balls": [
+      { "num": 0, "x": 22, "y": 66 },
+      { "num": 1, "x": 18, "y": 44 },
+      { "num": 2, "x": 12, "y": 28 },
+      { "num": 3, "x": 6, "y": 16 }
+    ]
+  }
+]
