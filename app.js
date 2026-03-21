@@ -741,6 +741,27 @@
         return (best && best.angle < Math.PI / 2) ? best : null;
     }
 
+    // Draw an arrowhead at the end of a line (screen coords)
+    function drawArrowhead(fromPt, toPt, color, strokeWidth) {
+        var dx = toPt.x - fromPt.x;
+        var dy = toPt.y - fromPt.y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1) return;
+        var ux = dx / len, uy = dy / len;
+        var headLen = S(0.6);
+        var headWidth = S(0.3);
+        var base = new paper.Point(toPt.x - ux * headLen, toPt.y - uy * headLen);
+        var left = new paper.Point(base.x - uy * headWidth, base.y + ux * headWidth);
+        var right = new paper.Point(base.x + uy * headWidth, base.y - ux * headWidth);
+        new paper.Path({
+            segments: [left, toPt, right],
+            strokeColor: color,
+            strokeWidth: strokeWidth,
+            fillColor: color,
+            closed: true
+        });
+    }
+
     // Draw the shot visualization
     function drawShotLines(cueTx, cueTy, aimTx, aimTy) {
         clearShotLines();
@@ -760,23 +781,29 @@
         if (!target) {
             // No ball hit — just draw aim line to rail
             var extLen = 200; // far enough to hit any rail
+            var fromPt = T(cueTx, cueTy);
+            var toPt = T(cueTx + nx * extLen, cueTy + ny * extLen);
             new paper.Path.Line({
-                from: T(cueTx, cueTy),
-                to: T(cueTx + nx * extLen, cueTy + ny * extLen),
+                from: fromPt,
+                to: toPt,
                 strokeColor: colors.aimLine,
                 strokeWidth: S(0.12),
                 dashArray: [S(0.5), S(0.5)]
             });
+            drawArrowhead(fromPt, toPt, colors.aimLine, S(0.12));
             return;
         }
 
         // 2. Aim line: cue ball → ghost ball position (contact point)
+        var aimFrom = T(cueTx, cueTy);
+        var aimTo = T(target.hitX, target.hitY);
         new paper.Path.Line({
-            from: T(cueTx, cueTy),
-            to: T(target.hitX, target.hitY),
+            from: aimFrom,
+            to: aimTo,
             strokeColor: colors.aimLine,
             strokeWidth: S(0.12)
         });
+        drawArrowhead(aimFrom, aimTo, colors.aimLine, S(0.12));
 
         // 3. Ghost ball at contact point
         new paper.Path.Circle({
@@ -805,22 +832,25 @@
         // Find best pocket for object ball path
         var pocketHit = findBestPocket(objBall.tableX, objBall.tableY, objDx, objDy);
 
-        // Always draw the raw deflection direction first (short line)
-        var rawLen = 8;
+        // OB deflection line — extends through ball (behind + forward) with arrow
+        var deflLen = 15;
+        var behindLen = 3; // extend behind the ball so player sees where to hit
+        var deflFrom = T(objBall.tableX - objDx * behindLen, objBall.tableY - objDy * behindLen);
+        var deflTo = T(objBall.tableX + objDx * deflLen, objBall.tableY + objDy * deflLen);
         new paper.Path.Line({
-            from: T(objBall.tableX, objBall.tableY),
-            to: T(objBall.tableX + objDx * rawLen, objBall.tableY + objDy * rawLen),
+            from: deflFrom,
+            to: deflTo,
             strokeColor: colors.objBallPath,
-            strokeWidth: S(0.15),
-            opacity: 0.6
+            strokeWidth: S(0.15)
         });
+        drawArrowhead(deflFrom, deflTo, colors.objBallPath, S(0.15));
 
         if (pocketHit) {
-            // Object ball path to pocket (solid line over the raw direction)
+            // Pocket line — green path from object ball to pocket
             new paper.Path.Line({
                 from: T(objBall.tableX, objBall.tableY),
                 to: T(pocketHit.pocket.x, pocketHit.pocket.y),
-                strokeColor: colors.objBallPath,
+                strokeColor: colors.pocketPath,
                 strokeWidth: S(0.15)
             });
 
@@ -828,15 +858,15 @@
             new paper.Path.Circle({
                 center: T(pocketHit.pocket.x, pocketHit.pocket.y),
                 radius: S(0.5),
-                strokeColor: colors.objBallPath,
+                strokeColor: colors.pocketPath,
                 strokeWidth: S(0.12),
                 fillColor: null
             });
         } else {
-            // No good pocket — extend the raw direction further (dashed)
+            // No good pocket — extend the deflection further (dashed)
             var extObjLen = 40;
             new paper.Path.Line({
-                from: T(objBall.tableX + objDx * rawLen, objBall.tableY + objDy * rawLen),
+                from: T(objBall.tableX + objDx * deflLen, objBall.tableY + objDy * deflLen),
                 to: T(objBall.tableX + objDx * extObjLen, objBall.tableY + objDy * extObjLen),
                 strokeColor: colors.objBallPath,
                 strokeWidth: S(0.12),

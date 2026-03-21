@@ -80,7 +80,8 @@ var TABLE_CONFIG = {
         tableLine:   'rgba(255,255,255,0.15)',  // head string, foot spot, etc.
         aimLine:     '#ffffff',
         cueBallPath: '#ffee00',
-        objBallPath: '#00e5ff',
+        objBallPath: '#ff4444',
+        pocketPath:  '#00ff88',
         text:        '#ffffff'
     }
 };
