@@ -42,6 +42,7 @@
     }
 
     function loadDrill(drill) {
+        PT.cueOverlay = drill.cueOverlay || null;
         PT.clearBalls();
         PT.clearShotLines();
         var rail = cfg.railWidth;
@@ -692,6 +693,7 @@
                 PT.appMode = 'drill';
                 PT.qrLayer.visible = false;
                 PT.qrLayer.removeChildren();
+                PT.cueOverlay = null;
                 activeDrills = null;
                 activeDrillIdx = 0;
                 activeCategory = null;

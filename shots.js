@@ -140,6 +140,107 @@
         });
     }
 
+    function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+    }
+
+    function drawCueOverlay(cueTx, cueTy, nx, ny, overlay) {
+        if (!overlay || overlay.show === false) return;
+        var cueCenter = T(cueTx, cueTy);
+        var size = (typeof overlay.size === 'number') ? overlay.size : 1.6;
+        var r = S(cfg.ballRadius) * size;
+        var offsetMult = (typeof overlay.offset === 'number') ? overlay.offset : 2.2;
+        var offset = r * offsetMult;
+        var side = overlay.side || 'right';
+
+        var leftPx = -ny;
+        var leftPy = nx;
+        var rightPx = ny;
+        var rightPy = -nx;
+        var px = (side === 'left') ? leftPx : rightPx;
+        var py = (side === 'left') ? leftPy : rightPy;
+
+        var overlayCenter = new paper.Point(cueCenter.x + px * offset, cueCenter.y + py * offset);
+
+        var group = new paper.Group();
+        var ringGroup = new paper.Group();
+        var uiGroup = new paper.Group();
+
+        var ring = new paper.Path.Circle({
+            center: new paper.Point(0, 0),
+            radius: r,
+            strokeColor: 'rgba(255,255,255,0.75)',
+            strokeWidth: Math.max(1, r * 0.08),
+            fillColor: 'rgba(255,255,255,0.05)'
+        });
+
+        var tip = overlay.tip || { x: 0.35, y: -0.35 };
+        var tipX = clamp(tip.x || 0, -0.8, 0.8);
+        var tipY = clamp(tip.y || 0, -0.8, 0.8);
+        var contact = new paper.Path.Circle({
+            center: new paper.Point(tipX * r * 0.7, tipY * r * 0.7),
+            radius: Math.max(1.5, r * 0.12),
+            fillColor: 'rgba(0,229,255,0.8)',
+            strokeColor: 'rgba(0,229,255,0.9)',
+            strokeWidth: Math.max(1, r * 0.05)
+        });
+
+        var power = (typeof overlay.power === 'number') ? clamp(overlay.power, 0, 1) : 0.55;
+        var batteryTop = new paper.Point(r * 1.7, -r * 0.9);
+        var batteryW = r * 0.55;
+        var batteryH = r * 1.8;
+        var batteryLeft = batteryTop.x - batteryW / 2;
+        var batteryRight = batteryTop.x + batteryW / 2;
+        var batteryBottom = batteryTop.y + batteryH;
+
+        var batteryOutline = new paper.Path.Rectangle({
+            from: new paper.Point(batteryLeft, batteryTop.y),
+            to: new paper.Point(batteryRight, batteryBottom),
+            radius: r * 0.08,
+            strokeColor: 'rgba(200,200,200,0.7)',
+            strokeWidth: Math.max(1, r * 0.05),
+            fillColor: 'rgba(255,255,255,0.03)'
+        });
+        var segments = 6;
+        var gap = r * 0.07;
+        var segH = (batteryH - gap * (segments - 1)) / segments;
+        var filled = Math.max(0, Math.min(segments, Math.ceil(power * segments)));
+        var segColors = ['#2ecc71', '#2ecc71', '#f1c40f', '#f1c40f', '#f39c12', '#e74c3c'];
+        for (var si = 0; si < segments; si++) {
+            var segBottom = batteryBottom - si * (segH + gap);
+            var segTop = segBottom - segH;
+            var active = (si < filled);
+            var seg = new paper.Path.Rectangle({
+                from: new paper.Point(batteryLeft + r * 0.06, segTop),
+                to: new paper.Point(batteryRight - r * 0.06, segBottom),
+                radius: r * 0.05,
+                strokeColor: null,
+                fillColor: active ? segColors[si] : 'rgba(255,255,255,0.08)'
+            });
+            uiGroup.addChild(seg);
+        }
+
+        var label = new paper.PointText({
+            point: new paper.Point(0, r * 1.55),
+            content: 'SUGGESTED TIP / POWER',
+            fillColor: 'rgba(255,255,255,0.5)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: Math.max(8, r * 0.28),
+            justification: 'center'
+        });
+
+        ringGroup.addChild(ring);
+        ringGroup.addChild(contact);
+        uiGroup.addChild(batteryOutline);
+        uiGroup.addChild(label);
+
+        group.addChild(ringGroup);
+        group.addChild(uiGroup);
+
+        group.position = overlayCenter;
+        ringGroup.rotate(Math.atan2(ny, nx) * 180 / Math.PI);
+    }
+
     function drawShotLines(cueTx, cueTy, aimTx, aimTy) {
         clearShotLines();
         PT.shotLayer.activate();
@@ -166,6 +267,7 @@
                 dashArray: [S(0.5), S(0.5)]
             });
             drawArrowhead(fromPt, toPt, colors.aimLine, S(0.12));
+            drawCueOverlay(cueTx, cueTy, nx, ny, PT.cueOverlay);
             return;
         }
 
@@ -179,6 +281,7 @@
             strokeWidth: S(0.12)
         });
         drawArrowhead(aimFrom, aimTo, colors.aimLine, S(0.12));
+        drawCueOverlay(cueTx, cueTy, nx, ny, PT.cueOverlay);
 
         // Ghost ball
         new paper.Path.Circle({

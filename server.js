@@ -1,9 +1,9 @@
 var http = require('http');
 var fs = require('fs');
 var path = require('path');
-var WebSocket = require('ws');
 var os = require('os');
 var QRCode = require('qrcode');
+var { Server } = require('socket.io');
 
 var PORT = 3001;
 var MIME = {
@@ -32,7 +32,8 @@ var server = http.createServer(function (req, res) {
         return;
     }
 
-    var url = req.url === '/' ? '/index.html' : req.url;
+    var rawUrl = req.url.split('?')[0];
+    var url = rawUrl === '/' ? '/index.html' : rawUrl;
     // Prevent path traversal
     var safePath = path.normalize(url).replace(/^(\.\.[\/\\])+/, '');
     var filePath = path.join(__dirname, safePath);
@@ -51,34 +52,51 @@ var server = http.createServer(function (req, res) {
             return;
         }
         var ext = path.extname(filePath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+        var headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
+        if (safePath === '/remote.html' || safePath === '/remote.js') {
+            headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0';
+            headers['Pragma'] = 'no-cache';
+            headers['Expires'] = '0';
+        }
+        res.writeHead(200, headers);
         res.end(data);
     });
 });
 
-// ── WebSocket relay ──
-// Remote controllers send commands → broadcast to all main app clients
-var wss = new WebSocket.Server({ server: server });
-var clients = new Set();
+// ── Socket.IO relay ──
+var io = new Server(server, {
+    cors: { origin: '*' },
+    pingInterval: 10000,
+    pingTimeout: 5000
+});
 
-wss.on('connection', function (ws, req) {
-    clients.add(ws);
-    var from = req.url === '/ws/remote' ? 'remote' : 'main';
-    console.log('WS connected: ' + from);
+function clientSummary() {
+    var mains = 0, remotes = 0;
+    io.sockets.sockets.forEach(function (s) {
+        if (s.role === 'main') mains++;
+        else if (s.role === 'remote') remotes++;
+    });
+    return mains + ' main, ' + remotes + ' remote (' + io.sockets.sockets.size + ' total)';
+}
 
-    ws.on('message', function (data) {
-        // Relay messages from remotes to all other clients
-        var msg = data.toString();
-        clients.forEach(function (c) {
-            if (c !== ws && c.readyState === WebSocket.OPEN) {
-                c.send(msg);
-            }
-        });
+io.on('connection', function (socket) {
+    var role = socket.handshake.query.role || 'unknown';
+    socket.role = role;
+    socket.join(role);
+    console.log('+ ' + role + '  ' + clientSummary());
+
+    // Relay: remote → main, main → remote
+    socket.on('cmd', function (data) {
+        socket.to(role === 'remote' ? 'main' : 'remote').emit('cmd', data);
     });
 
-    ws.on('close', function () {
-        clients.delete(ws);
-        console.log('WS disconnected: ' + from);
+    // Test echo
+    socket.on('ping-test', function (data) {
+        socket.emit('pong-test', { n: data.n, t: data.t, serverT: Date.now() });
+    });
+
+    socket.on('disconnect', function (reason) {
+        console.log('- ' + role + '  reason=' + reason + '  ' + clientSummary());
     });
 });
 

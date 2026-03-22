@@ -157,6 +157,9 @@ window.PT = (function () {
     // ── Ball selection (for deletion) ──
     var selectedBall = null;  // ball number or null
 
+    // ── Cue overlay (per drill) ──
+    var cueOverlay = null;
+
     // ── Pointer tool — created once, handlers in input.js ──
     var pointerTool = new paper.Tool();
     pointerTool.activate();
@@ -189,7 +192,13 @@ window.PT = (function () {
 
         // State — accessed via getters/setters so modules can share
         get appMode() { return appMode; },
-        set appMode(v) { appMode = v; },
+        set appMode(v) {
+            appMode = v;
+            if (v !== 'menu') {
+                qrLayer.visible = false;
+                qrLayer.removeChildren();
+            }
+        },
         get projectionMode() { return projectionMode; },
         set projectionMode(v) { projectionMode = v; },
 
@@ -207,6 +216,10 @@ window.PT = (function () {
         // Selected ball
         get selectedBall() { return selectedBall; },
         set selectedBall(v) { selectedBall = v; },
+
+        // Cue overlay
+        get cueOverlay() { return cueOverlay; },
+        set cueOverlay(v) { cueOverlay = v; },
 
         // Calibration state
         get calibrationCorners() { return calibrationCorners; },

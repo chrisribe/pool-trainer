@@ -6,11 +6,63 @@
 <title>Pool Trainer Remote</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; background: #1a1a2e; color: #fff; font-family: Arial, sans-serif;
-    touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none;
-    overflow: hidden; }
+html, body {
+    height: 100%;
+    min-height: 100%;
+    background: #1a1a2e;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    user-select: none;
+    overflow: hidden;
+}
 
-.container { display: flex; flex-direction: column; height: 100%; padding: 10px; gap: 8px; }
+body {
+    display: flex;
+    height: -webkit-fill-available;
+}
+
+body.app-loading .container {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(16,16,28,0.85);
+    color: #fff;
+    z-index: 10;
+    text-align: center;
+    padding: 16px;
+}
+
+body.app-loading .loading-overlay {
+    display: flex;
+}
+
+.loading-title { font-size: 16px; font-weight: bold; }
+.loading-sub { font-size: 12px; color: #aaa; }
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    flex: 1;
+    padding: 10px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    background: #1a1a2e;
+    gap: 8px;
+}
 
 .status { text-align: center; font-size: 13px; padding: 4px; color: #888; }
 .status.connected { color: #0f0; }
@@ -89,20 +141,35 @@ html, body { height: 100%; background: #1a1a2e; color: #fff; font-family: Arial,
         <div class="btn btn-util" data-action="clear">CLEAR</div>
         <div class="btn btn-util" data-action="projection">PROJ</div>
     </div>
+    <div class="btn-row" style="flex:0">
+        <div class="btn btn-util" data-action="edit">EDIT</div>
+    </div>
 </div>
 
+<div class="loading-overlay" id="loading">
+    <div class="loading-title" id="loading-title">Connecting...</div>
+    <div class="loading-sub" id="loading-sub">Opening socket</div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
 <script>
-var ws, statusEl, infoEl;
+var socket, statusEl, infoEl;
 var lastTouchTime = 0;
 var initialized = false;
 var currentMode = '';
-var reconnectTimer = null;
+var primaryAppId = null;
+var loadingTitleEl = null;
+var loadingSubEl = null;
 
 function init() {
     if (initialized) return;
     initialized = true;
     statusEl = document.getElementById('status');
     infoEl = document.getElementById('info');
+    loadingTitleEl = document.getElementById('loading-title');
+    loadingSubEl = document.getElementById('loading-sub');
+
+    setUiEnabled(false, 'Connecting...', 'Opening socket');
 
     var btns = document.querySelectorAll('[data-action]');
     for (var i = 0; i < btns.length; i++) {
@@ -119,15 +186,41 @@ function init() {
         })(btns[i]);
     }
 
-    // Reconnect when phone screen unlocks / tab regains focus
-    document.addEventListener('visibilitychange', function () {
-        if (!document.hidden && (!ws || ws.readyState > WebSocket.OPEN)) {
-            clearTimeout(reconnectTimer);
-            connect();
-        }
+    // Socket.IO handles reconnection, heartbeat, transport fallback automatically
+    socket = io({ query: { role: 'remote' } });
+
+    socket.on('connect', function () {
+        statusEl.textContent = 'Connected';
+        statusEl.className = 'status connected';
+        setUiEnabled(true);
+        send('requestStatus');
     });
 
-    connect();
+    socket.on('disconnect', function (reason) {
+        statusEl.textContent = 'Disconnected (' + reason + ')';
+        statusEl.className = 'status disconnected';
+        setUiEnabled(false, 'Disconnected', 'Reconnecting...');
+    });
+
+    socket.on('cmd', function (data) {
+        if (data.type === 'status') {
+            if (data.appId) {
+                if (!primaryAppId) primaryAppId = data.appId;
+                if (primaryAppId !== data.appId) return;
+            }
+            if (data.text) infoEl.textContent = data.text;
+            if (data.mode && data.mode !== currentMode) {
+                currentMode = data.mode;
+                switchView(currentMode);
+            }
+        }
+    });
+}
+
+function setUiEnabled(enabled, title, sub) {
+    if (title) loadingTitleEl.textContent = title;
+    if (sub) loadingSubEl.textContent = sub;
+    document.body.className = enabled ? '' : 'app-loading';
 }
 
 document.addEventListener('DOMContentLoaded', init);
@@ -145,43 +238,9 @@ function switchView(mode) {
     }
 }
 
-function connect() {
-    if (ws && ws.readyState <= WebSocket.OPEN) return;
-    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(proto + '//' + location.host + '/ws/remote');
-
-    ws.onopen = function () {
-        statusEl.textContent = 'Connected';
-        statusEl.className = 'status connected';
-        send('requestStatus');
-    };
-
-    ws.onmessage = function (e) {
-        try {
-            var msg = JSON.parse(e.data);
-            if (msg.type === 'status') {
-                if (msg.text) infoEl.textContent = msg.text;
-                if (msg.mode && msg.mode !== currentMode) {
-                    currentMode = msg.mode;
-                    switchView(currentMode);
-                }
-            }
-        } catch (err) {}
-    };
-
-    ws.onclose = function () {
-        statusEl.textContent = 'Disconnected — reconnecting...';
-        statusEl.className = 'status disconnected';
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(connect, 2000);
-    };
-
-    ws.onerror = function () { ws.close(); };
-}
-
 function send(action) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ action: action }));
+    if (socket && socket.connected) {
+        socket.emit('cmd', { action: action });
     }
 }
 </script>

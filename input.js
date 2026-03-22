@@ -50,6 +50,7 @@
                     PT.appMode = 'drill';
                     PT.qrLayer.visible = false;
                     PT.qrLayer.removeChildren();
+                    PT.cueOverlay = null;
                     PT.activeDrills = null;
                     PT.activeDrillIdx = 0;
                     PT.activeCategory = null;

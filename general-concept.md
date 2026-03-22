@@ -40,8 +40,9 @@ The app renders a top-down view of the table at the projector's native resolutio
 - Aim line from cue ball to object ball (with angle indicators)
 - Projected path of object ball to pocket
 - Projected path of cue ball after contact (position play)
-- English/spin indicator (top/bottom/left/right dot on cue ball)
-- Speed indicator (line thickness or color)
+- English/spin indicator (cue tip contact point on cue ball)
+- Speed marker (power level, line thickness, or color)
+    - Short UI: cue-ball overlay with a tap target for tip contact + a vertical power slider (low/med/high), oriented along the aim line so players can read it before getting down on the shot
 
 **4. Drill library**
 - Pre-built drill sets (JSON files, like your icon catalogs)
@@ -116,7 +117,7 @@ pool-trainer/
 
 The pro systems don't bother with separate tablet-vs-projector layouts. The UI is projected directly onto the table surface alongside the drill. The tablet simply mirrors/drives what the projector shows.
 
-**Two app states:**
+**App states:**
 
 ```
 STATE 1: MENU (projected on table)
@@ -135,7 +136,21 @@ STATE 1: MENU (projected on table)
 │         (all projected on felt)                 │
 └─────────────────────────────────────────────────┘
 
-STATE 2: DRILL (projected on table)
+STATE 2: DRILL LIST (projected on table)
+┌─────────────────────────────────────────────────┐
+│                                                 │
+│           CATEGORY: CUT SHOTS                   │
+│                                                 │
+│     ┌─────────────────────┐                     │
+│     │ ▶ 1/8  Thin Cut     │                     │
+│     │    2/8  Half Ball   │                     │
+│     │    3/8  Inside Cut  │                     │
+│     └─────────────────────┘                     │
+│                                                 │
+│   ◀ Back                       ▶ Next Page      │
+└─────────────────────────────────────────────────┘
+
+STATE 3: DRILL (projected on table)
 ┌─────────────────────────────────────────────────┐
 │                                                 │
 │    ○ ──────→ ● ─────→ [pocket]                  │
@@ -147,6 +162,16 @@ STATE 2: DRILL (projected on table)
 │    Tap anywhere = next drill                    │
 │    Tap & hold / two-finger tap = back to menu   │
 │                                                 │
+└─────────────────────────────────────────────────┘
+
+STATE 4: CALIBRATION (projected on table)
+┌─────────────────────────────────────────────────┐
+│      TL ●──────────────────────────────● TR     │
+│         │                              │        │
+│         │          CALIBRATION         │        │
+│         │    Drag corners to match     │        │
+│         │                              │        │
+│      BL ●──────────────────────────────● BR     │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -212,6 +237,8 @@ Phone browser ←→ WebSocket ←→ server.js ←→ Main browser (projector)
 
 **Commands:** `next`, `prev`, `menu`, `rack9`, `rack8`, `clear`
 
+**Status:** Implemented (server.js + remote.html + QR pairing)
+
 **Complexity:** Low — ~50 lines server (ws/socket.io), ~30 lines main app listener, ~80 lines remote page. No auth needed on local network.
 
 **Why not Bluetooth keyboard?** Works, but phone is always in your pocket. The remote page can also show drill info (name, step count) that isn't visible on the projected table from all angles.
@@ -238,9 +265,10 @@ The core is much simpler than the SVG editor because:
 2. **Ball placement** — draggable numbered balls with snapping ✅
 3. **Shot lines** — click cue ball, drag to set aim, show projected paths ✅
 4. **Drill save/load** — serialize ball positions + shot lines to JSON ✅
-5. **Drill library** — menu projected on table, browse/load drills with tap navigation ✅
+5. **Drill library + list view** — menu and per-category drill list with pagination ✅
 6. **Projection mode + Calibration** — P=toggle projection overlay, K=4-corner homography calibration ✅
-7. **Mobile remote** — WebSocket phone controller (next/prev/menu via big touch buttons, QR code pairing)
-8. **Touch navigation** — tap = next, hold/two-finger = exit to menu, large touch targets
-9. **Polish** — English indicators, speed markers, difficulty tags
+7. **Touch UX polish** — selection ring, trash icon, long-press actions ✅
+8. **Mobile remote** — WebSocket phone controller (next/prev/menu via big touch buttons, QR code pairing) ✅
+9. **Drill editor mode** — create/edit drills, place cue target rings, save to JSON
+10. **Polish** — English indicators, speed markers, difficulty tags
 

@@ -1,13 +1,14 @@
 /* ================================================================
    Pool Trainer — remote.js
-   WebSocket remote control, QR code, command dispatch
+   Socket.IO remote control, QR code, command dispatch
    ================================================================ */
 
 (function () {
     'use strict';
 
-    var remoteWs = null;
+    var socket = null;
     var cachedQR = null;
+    var appId = 'main-' + Math.random().toString(36).slice(2, 10);
 
     // QR code on its own layer
     function drawQRCode() {
@@ -63,21 +64,11 @@
     }
 
     function connectRemote() {
-        var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        remoteWs = new WebSocket(proto + '//' + location.host + '/ws/main');
+        socket = io({ query: { role: 'main' } });
 
-        remoteWs.onmessage = function (e) {
-            try {
-                var msg = JSON.parse(e.data);
-                handleRemoteCommand(msg.action);
-            } catch (err) {}
-        };
-
-        remoteWs.onclose = function () {
-            setTimeout(connectRemote, 3000);
-        };
-
-        remoteWs.onerror = function () { remoteWs.close(); };
+        socket.on('cmd', function (data) {
+            handleRemoteCommand(data.action);
+        });
     }
 
     function handleRemoteCommand(action) {
@@ -89,8 +80,26 @@
             case 'next':       PT.nextDrill(); break;
             case 'prev':       PT.prevDrill(); break;
             case 'menu':       PT.menuBack(); break;
-            case 'rack9':      PT.activeDrills = null; PT.rack9Ball(); PT.uiLayer.removeChildren(); break;
-            case 'rack8':      PT.activeDrills = null; PT.rack8Ball(); PT.uiLayer.removeChildren(); break;
+            case 'edit':
+                if (PT.toggleEditMode) { PT.toggleEditMode(); break; }
+                if (PT.enterEditMode) { PT.enterEditMode(); break; }
+                break;
+            case 'rack9':
+                PT.appMode = 'drill';
+                PT.activeDrills = null;
+                PT.qrLayer.visible = false;
+                PT.qrLayer.removeChildren();
+                PT.rack9Ball();
+                PT.uiLayer.removeChildren();
+                break;
+            case 'rack8':
+                PT.appMode = 'drill';
+                PT.activeDrills = null;
+                PT.qrLayer.visible = false;
+                PT.qrLayer.removeChildren();
+                PT.rack8Ball();
+                PT.uiLayer.removeChildren();
+                break;
             case 'clear':      PT.clearBalls(); PT.clearShotLines(); break;
             case 'projection':
                 PT.projectionMode = !PT.projectionMode;
@@ -104,7 +113,7 @@
     }
 
     function sendRemoteStatus() {
-        if (!remoteWs || remoteWs.readyState !== WebSocket.OPEN) return;
+        if (!socket || !socket.connected) return;
         var text = '';
         if (PT.appMode === 'drill' && PT.activeDrills) {
             var drill = PT.activeDrills[PT.activeDrillIdx];
@@ -118,12 +127,13 @@
             text = PT.activeCategory || 'Drills';
         }
         var remoteMode = (PT.appMode === 'drill') ? 'drill' : 'menu';
-        remoteWs.send(JSON.stringify({
+        socket.emit('cmd', {
             type: 'status',
             text: text,
             mode: remoteMode,
-            hasDrills: !!(PT.activeDrills && PT.activeDrills.length)
-        }));
+            hasDrills: !!(PT.activeDrills && PT.activeDrills.length),
+            appId: appId
+        });
     }
 
     // ── Exports ──

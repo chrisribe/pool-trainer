@@ -3,6 +3,14 @@
     "name": "Center Pocket Straight Shot",
     "description": "Straight shot into the side pocket. Focus on center-ball hit and follow-through.",
     "difficulty": 1,
+    "cueOverlay": {
+      "show": true,
+      "side": "right",
+      "size": 1.8,
+      "offset": 2.2,
+      "tip": { "x": 0.25, "y": -0.2 },
+      "power": 0.6
+    },
     "balls": [
       { "num": 0, "x": 30, "y": 44 },
       { "num": 1, "x": 12, "y": 44 }
