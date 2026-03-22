@@ -19,7 +19,7 @@ var server = http.createServer(function (req, res) {
     // API: QR code for remote control URL
     if (req.url === '/api/remote-qr') {
         var ip = getLocalIP();
-        var remoteUrl = 'http://' + ip + ':' + PORT + '/remote.html';
+        var remoteUrl = 'http://' + ip + ':' + PORT + '/remote';
         QRCode.toDataURL(remoteUrl, { width: 256, margin: 1, color: { dark: '#ffffff', light: '#00000000' } }, function (err, dataUrl) {
             if (err) {
                 res.writeHead(500);
@@ -32,7 +32,23 @@ var server = http.createServer(function (req, res) {
         return;
     }
 
+    // Remote control page
     var rawUrl = req.url.split('?')[0];
+    if (rawUrl === '/remote') {
+        var remotePath = path.join(__dirname, 'views', 'remote.html');
+        fs.readFile(remotePath, function (err, data) {
+            if (err) { res.writeHead(500); res.end('Remote page not found'); return; }
+            res.writeHead(200, {
+                'Content-Type': 'text/html',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                'Pragma': 'no-cache'
+            });
+            res.end(data);
+        });
+        return;
+    }
+
+    // Static files
     var url = rawUrl === '/' ? '/index.html' : rawUrl;
     // Prevent path traversal
     var safePath = path.normalize(url).replace(/^(\.\.[\/\\])+/, '');
@@ -53,11 +69,6 @@ var server = http.createServer(function (req, res) {
         }
         var ext = path.extname(filePath).toLowerCase();
         var headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' };
-        if (safePath === '/remote.html' || safePath === '/remote.js') {
-            headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0';
-            headers['Pragma'] = 'no-cache';
-            headers['Expires'] = '0';
-        }
         res.writeHead(200, headers);
         res.end(data);
     });
@@ -125,5 +136,5 @@ function getLocalIP() {
 server.listen(PORT, function () {
     var ip = getLocalIP();
     console.log('Pool Trainer running at http://localhost:' + PORT);
-    console.log('Remote control: http://' + ip + ':' + PORT + '/remote.html');
+    console.log('Remote control: http://' + ip + ':' + PORT + '/remote');
 });
