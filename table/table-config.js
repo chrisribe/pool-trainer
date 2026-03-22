@@ -18,7 +18,7 @@ var TABLE_CONFIG = {
     },
 
     // Active table
-    active: '8-foot',
+    active: '9-foot',
 
     get playWidth()  { return this.tables[this.active].width; },
     get playHeight() { return this.tables[this.active].height; },

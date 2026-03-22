@@ -21,6 +21,7 @@
 
     // ── App state ──
     var appMode = 'menu';  // 'menu' | 'drill'
+    var projectionMode = false;  // true = hide pockets/cushions/rail for projector overlay
 
     // ── Ball state ──
     // balls[number] = { num, tableX, tableY, group (Paper.js Group) }
@@ -157,25 +158,30 @@
         var pw = cfg.playWidth;
         var ph = cfg.playHeight;
 
-        // 1. Outer rail (dark rectangle, rounded corners)
-        var railTL = T(0, 0);
-        var railBR = T(totalWidth, totalHeight);
-        var railRect = new paper.Path.Rectangle({
-            from: railTL,
-            to: railBR,
-            radius: S(1.5),
-            fillColor: colors.rail,
-            strokeColor: '#333',
-            strokeWidth: S(0.15)
-        });
+        if (!projectionMode) {
+            // 1. Outer rail (dark rectangle, rounded corners)
+            var railTL = T(0, 0);
+            var railBR = T(totalWidth, totalHeight);
+            var railRect = new paper.Path.Rectangle({
+                from: railTL,
+                to: railBR,
+                radius: S(1.5),
+                fillColor: colors.rail,
+                strokeColor: '#333',
+                strokeWidth: S(0.15)
+            });
 
-        // 2. Cushions / bumpers — 6 segments between the pockets
-        drawCushions(rail, pw, ph);
+            // 2. Cushions / bumpers — 6 segments between the pockets
+            drawCushions(rail, pw, ph);
 
-        // 3. Pockets
-        drawPockets(rail, pw, ph);
+            // 3. Pockets
+            drawPockets(rail, pw, ph);
+        } else {
+            // Projection mode: thin nose outline for calibration verification
+            drawNoseOutline(rail, pw, ph);
+        }
 
-        // 4. Diamonds
+        // 4. Diamonds (shown in both modes — useful for alignment check)
         drawDiamonds(rail, pw, ph);
 
         // 5. Table markings (head string, foot spot, center spot)
@@ -321,24 +327,31 @@
         });
     }
 
+    // ── Nose outline (projection mode) ──
+    // Thin dashed rectangle at the cushion nose edge (inner playing surface boundary)
+    // Used for calibration verification — if this line sits on the physical cushion nose,
+    // the projection is aligned correctly.
+    function drawNoseOutline(rail, pw, ph) {
+        var tl = T(rail, rail);
+        var tr = T(rail + pw, rail);
+        var bl = T(rail, rail + ph);
+        var br = T(rail + pw, rail + ph);
+        new paper.Path({
+            segments: [tl, tr, br, bl],
+            closed: true,
+            strokeColor: 'rgba(255,255,255,0.35)',
+            strokeWidth: S(0.1),
+            dashArray: [S(0.6), S(0.4)],
+            fillColor: null
+        });
+    }
+
     // ── Diamonds / Sights (WPA Section 6) ──
-    // 18 sights, center 3 11/16" from cushion nose
+    // 18 sights, center 3 11/16" from cushion nose (into the wooden rail)
     function drawDiamonds(rail, pw, ph) {
         var r = cfg.diamondRadius;
-        var cw = cfg.cushionWidth;
-        // WPA: sight center is sightDistFromNose from the cushion nose
-        // Nose is at the inner edge (rail), so sight is at rail - sightDistFromNose + cw
-        // = distance from outer edge of table inward
         var sightDist = cfg.sightDistFromNose || 3.6875;
-        // Offset from outer table edge: the nose is at 'rail' from outer edge,
-        // so the sight is at (rail - cw) + (cw - sightDist) = rail - sightDist
-        // But sightDist is measured outward from nose, so sight center = rail - sightDist
-        // Wait: nose is at position 'rail' (inner edge). Sight is sightDist away from nose
-        // going outward (into the rail). So sight x = rail - sightDist... but that could be
-        // negative. sightDist (3.6875) > cushionWidth (2) so the sight is in the wooden rail.
-        // Position from outer edge = total rail (rail) - (cushionWidth + sightDist - cushionWidth)
-        // Simpler: sight center = rail - sightDist (from playing surface edge, going outward)
-        // Since rail=5 and sightDist=3.6875, offset from outer edge = 5 - 3.6875 = 1.3125"
+        // Sight sits sightDist outward from cushion nose, in the wooden rail
         var offset = rail - sightDist;
 
         // Long rails (left & right): 7 diamonds each, skip side pocket position
@@ -546,6 +559,8 @@
 
     function rack9Ball() {
         clearBalls();
+        clearShotLines();
+        aimState = null;
         var rail = cfg.railWidth;
         var pw = cfg.playWidth;
         var ph = cfg.playHeight;
@@ -584,6 +599,8 @@
 
     function rack8Ball() {
         clearBalls();
+        clearShotLines();
+        aimState = null;
         var rail = cfg.railWidth;
         var pw = cfg.playWidth;
         var ph = cfg.playHeight;
@@ -1594,6 +1611,11 @@
     // ── Keyboard shortcuts ──
     document.addEventListener('keydown', function (e) {
         if (e.key === 'f' || e.key === 'F') enterFullscreen();
+        if (e.key === 'p' || e.key === 'P') {
+            projectionMode = !projectionMode;
+            drawTable();
+            redrawBalls();
+        }
 
         if (appMode === 'drill') {
             if (e.key === 'ArrowRight' || e.key === ' ') nextDrill();
