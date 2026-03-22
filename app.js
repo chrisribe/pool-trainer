@@ -37,6 +37,16 @@
 
     var totalWidth, totalHeight, scaleFactor, origin;
 
+    // ── Calibration state ──
+    // 4-corner homography: maps default screen positions → user-adjusted positions
+    // Stored as { tl, tr, br, bl } where each is { x, y } in screen pixels
+    var calibrationCorners = null;  // null = no calibration (use default T)
+    var calibrationMatrix = null;   // 3x3 homography matrix (forward)
+    var calibrationInverse = null;  // 3x3 inverse homography matrix
+    var calibrationMode = false;    // true = showing drag handles
+    var calibrationHandles = [];    // Paper.js items for the 4 drag handles
+    var calibrationDragIdx = -1;    // which handle is being dragged (-1 = none)
+
     function computeLayout() {
         var rail = cfg.railWidth;
         totalWidth  = cfg.playWidth  + rail * 2;   // playing surface + both rails
@@ -66,17 +76,14 @@
         origin = new paper.Point(vw / 2, vh / 2); // center of viewport
     }
 
-    // Helper: convert table-inches point to canvas point.
-    // (0,0) = top-left corner of the rail. Playing surface starts at (railWidth, railWidth).
-    // We center the table in the viewport and optionally rotate for landscape.
-    function T(x, y) {
+    // Helper: convert table-inches point to canvas point (default, no calibration).
+    function T_default(x, y) {
         var vw = paper.view.size.width;
         var vh = paper.view.size.height;
         var landscape = (vw / vh) >= 1;
 
         var cx, cy;
         if (landscape) {
-            // rotate 90°: table x → screen y, table y → screen x (inverted)
             cx = (totalHeight - y) * scaleFactor;
             cy = x * scaleFactor;
         } else {
@@ -84,7 +91,6 @@
             cy = y * scaleFactor;
         }
 
-        // center
         var drawnW, drawnH;
         if (landscape) {
             drawnW = totalHeight * scaleFactor;
@@ -100,13 +106,23 @@
         return new paper.Point(cx, cy);
     }
 
+    // Table-inches → canvas point (with calibration homography if active)
+    function T(x, y) {
+        var pt = T_default(x, y);
+        if (calibrationMatrix) {
+            var mapped = applyHomography(calibrationMatrix, pt.x, pt.y);
+            return new paper.Point(mapped.x, mapped.y);
+        }
+        return pt;
+    }
+
     // Scale inches → canvas pixels (scalar)
     function S(inches) {
         return inches * scaleFactor;
     }
 
-    // Inverse transform: canvas point → table-inches (x, y)
-    function invT(canvasPoint) {
+    // Inverse transform: canvas point → default screen point (undo calibration)
+    function invT_default(canvasPoint) {
         var vw = paper.view.size.width;
         var vh = paper.view.size.height;
         var landscape = (vw / vh) >= 1;
@@ -134,6 +150,15 @@
         return { x: tx, y: ty };
     }
 
+    // Canvas point → table-inches (with calibration inverse if active)
+    function invT(canvasPoint) {
+        if (calibrationInverse) {
+            var unmapped = applyHomography(calibrationInverse, canvasPoint.x, canvasPoint.y);
+            return invT_default({ x: unmapped.x, y: unmapped.y });
+        }
+        return invT_default(canvasPoint);
+    }
+
     // Clamp table position to playing surface bounds (keeps ball fully inside cushions)
     function clampToPlayingSurface(tx, ty) {
         var rail = cfg.railWidth;
@@ -144,6 +169,143 @@
             x: Math.max(minX, Math.min(maxX, tx)),
             y: Math.max(minY, Math.min(maxY, ty))
         };
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  HOMOGRAPHY / CALIBRATION MATH
+    // ══════════════════════════════════════════════════════════════
+
+    // Compute 3x3 perspective transform mapping rectangle src[4] → arbitrary quad dst[4]
+    // Each point is { x, y }. Order: TL, TR, BR, BL.
+    // Returns a flat [a,b,c,d,e,f,g,h,1] array representing the 3x3 matrix:
+    //   [ a  b  c ]     [ x' ]     [ a*x + b*y + c ]
+    //   [ d  e  f ]  *  [ y' ]  =  [ d*x + e*y + f ]
+    //   [ g  h  1 ]     [ 1  ]     [ g*x + h*y + 1 ]
+    // Screen output = (col0/col2, col1/col2) after perspective divide.
+    function computeHomography(src, dst) {
+        // Set up 8x8 system: solve for [a,b,c,d,e,f,g,h]
+        var A = [], B = [];
+        for (var i = 0; i < 4; i++) {
+            var sx = src[i].x, sy = src[i].y;
+            var dx = dst[i].x, dy = dst[i].y;
+            A.push([sx, sy, 1, 0,  0,  0, -dx * sx, -dx * sy]);
+            B.push(dx);
+            A.push([0,  0,  0, sx, sy, 1, -dy * sx, -dy * sy]);
+            B.push(dy);
+        }
+        var h = solveLinear8(A, B);
+        if (!h) return null;
+        return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+    }
+
+    // Gaussian elimination for 8x8 system
+    function solveLinear8(A, B) {
+        var n = 8;
+        // Augmented matrix
+        var M = [];
+        for (var i = 0; i < n; i++) {
+            M[i] = A[i].slice();
+            M[i].push(B[i]);
+        }
+        // Forward elimination with partial pivoting
+        for (var col = 0; col < n; col++) {
+            var maxRow = col, maxVal = Math.abs(M[col][col]);
+            for (var row = col + 1; row < n; row++) {
+                var v = Math.abs(M[row][col]);
+                if (v > maxVal) { maxVal = v; maxRow = row; }
+            }
+            if (maxVal < 1e-12) return null; // singular
+            var tmp = M[col]; M[col] = M[maxRow]; M[maxRow] = tmp;
+            var pivot = M[col][col];
+            for (var j = col; j <= n; j++) M[col][j] /= pivot;
+            for (var row2 = 0; row2 < n; row2++) {
+                if (row2 === col) continue;
+                var f = M[row2][col];
+                for (var j2 = col; j2 <= n; j2++) M[row2][j2] -= f * M[col][j2];
+            }
+        }
+        var x = [];
+        for (var i2 = 0; i2 < n; i2++) x.push(M[i2][n]);
+        return x;
+    }
+
+    // Apply homography: screen point → transformed screen point
+    function applyHomography(H, px, py) {
+        var w = H[6] * px + H[7] * py + H[8];
+        return {
+            x: (H[0] * px + H[1] * py + H[2]) / w,
+            y: (H[3] * px + H[4] * py + H[5]) / w
+        };
+    }
+
+    // Invert a 3x3 matrix (stored as flat 9-element array, row-major)
+    function invert3x3(H) {
+        var a = H[0], b = H[1], c = H[2];
+        var d = H[3], e = H[4], f = H[5];
+        var g = H[6], h = H[7], k = H[8];
+        var det = a * (e * k - f * h) - b * (d * k - f * g) + c * (d * h - e * g);
+        if (Math.abs(det) < 1e-12) return null;
+        var inv = 1 / det;
+        return [
+            (e * k - f * h) * inv, (c * h - b * k) * inv, (b * f - c * e) * inv,
+            (f * g - d * k) * inv, (a * k - c * g) * inv, (c * d - a * f) * inv,
+            (d * h - e * g) * inv, (b * g - a * h) * inv, (a * e - b * d) * inv
+        ];
+    }
+
+    // Get the 4 default screen positions of the playing surface corners (no calibration)
+    function getDefaultCorners() {
+        var rail = cfg.railWidth;
+        var pw = cfg.playWidth;
+        var ph = cfg.playHeight;
+        var tl = T_default(rail, rail);
+        var tr = T_default(rail + pw, rail);
+        var br = T_default(rail + pw, rail + ph);
+        var bl = T_default(rail, rail + ph);
+        return [
+            { x: tl.x, y: tl.y },
+            { x: tr.x, y: tr.y },
+            { x: br.x, y: br.y },
+            { x: bl.x, y: bl.y }
+        ];
+    }
+
+    // Rebuild the homography matrices from current calibration corners
+    function rebuildCalibration() {
+        if (!calibrationCorners) {
+            calibrationMatrix = null;
+            calibrationInverse = null;
+            return;
+        }
+        var src = getDefaultCorners();
+        var dst = [
+            calibrationCorners.tl, calibrationCorners.tr,
+            calibrationCorners.br, calibrationCorners.bl
+        ];
+        calibrationMatrix = computeHomography(src, dst);
+        calibrationInverse = calibrationMatrix ? invert3x3(calibrationMatrix) : null;
+    }
+
+    // Save calibration to localStorage
+    function saveCalibration() {
+        if (calibrationCorners) {
+            localStorage.setItem('poolTrainer_calibration', JSON.stringify(calibrationCorners));
+        } else {
+            localStorage.removeItem('poolTrainer_calibration');
+        }
+    }
+
+    // Load calibration from localStorage
+    function loadCalibration() {
+        var saved = localStorage.getItem('poolTrainer_calibration');
+        if (saved) {
+            try {
+                calibrationCorners = JSON.parse(saved);
+                rebuildCalibration();
+            } catch (e) {
+                calibrationCorners = null;
+            }
+        }
     }
 
     // ── Drawing ──
@@ -444,9 +606,11 @@
 
     // ── Resize handling ──
     paper.view.onResize = function () {
+        rebuildCalibration();
         drawTable();
         redrawBalls();
         clearShotLines();
+        if (calibrationMode) drawCalibrationHandles();
         if (appMode === 'menu') showMenu();
         else if (appMode === 'drillList') showMenu(); // reset to menu on resize
         else if (appMode === 'drill' && activeDrills) showDrillHUD();
@@ -1526,9 +1690,175 @@
         return null;
     }
 
-    // ── Pointer tool (handles menu clicks + drill aiming + ball drag) ──
+    // ══════════════════════════════════════════════════════════════
+    //  CALIBRATION UI (Step 6)
+    // ══════════════════════════════════════════════════════════════
+
+    var calibLayer = new paper.Layer({ name: 'calibration' });
+    calibLayer.visible = false;
+
+    function enterCalibrationMode() {
+        calibrationMode = true;
+        calibLayer.visible = true;
+        calibLayer.activate();
+        calibLayer.removeChildren();
+
+        // Initialize corners from saved calibration or defaults
+        if (!calibrationCorners) {
+            var def = getDefaultCorners();
+            calibrationCorners = { tl: def[0], tr: def[1], br: def[2], bl: def[3] };
+        }
+
+        drawCalibrationHandles();
+    }
+
+    function exitCalibrationMode(save) {
+        calibrationMode = false;
+        calibLayer.visible = false;
+        calibLayer.removeChildren();
+        calibrationHandles = [];
+        calibrationDragIdx = -1;
+
+        if (save) {
+            rebuildCalibration();
+            saveCalibration();
+            // Redraw everything with new calibration
+            drawTable();
+            redrawBalls();
+        }
+    }
+
+    function resetCalibration() {
+        calibrationCorners = null;
+        calibrationMatrix = null;
+        calibrationInverse = null;
+        saveCalibration();
+        if (calibrationMode) exitCalibrationMode(false);
+        drawTable();
+        redrawBalls();
+    }
+
+    function drawCalibrationHandles() {
+        calibLayer.removeChildren();
+        calibLayer.activate();
+        calibrationHandles = [];
+
+        var corners = [
+            calibrationCorners.tl, calibrationCorners.tr,
+            calibrationCorners.br, calibrationCorners.bl
+        ];
+        var labels = ['TL', 'TR', 'BR', 'BL'];
+        var handleRadius = 14;
+
+        // Draw connecting lines between corners
+        var linePath = new paper.Path({
+            segments: corners.map(function (c) { return new paper.Point(c.x, c.y); }),
+            closed: true,
+            strokeColor: 'rgba(255,100,0,0.6)',
+            strokeWidth: 2,
+            dashArray: [8, 4],
+            fillColor: null
+        });
+
+        // Draw each handle
+        for (var i = 0; i < 4; i++) {
+            var c = corners[i];
+            var group = new paper.Group();
+
+            // Outer circle
+            var circle = new paper.Path.Circle({
+                center: new paper.Point(c.x, c.y),
+                radius: handleRadius,
+                fillColor: 'rgba(255,100,0,0.7)',
+                strokeColor: '#ffffff',
+                strokeWidth: 2
+            });
+
+            // Crosshair
+            var ch = handleRadius * 0.6;
+            var cp = new paper.Point(c.x, c.y);
+            new paper.Path.Line({
+                from: new paper.Point(cp.x - ch, cp.y),
+                to: new paper.Point(cp.x + ch, cp.y),
+                strokeColor: '#ffffff',
+                strokeWidth: 1.5
+            });
+            new paper.Path.Line({
+                from: new paper.Point(cp.x, cp.y - ch),
+                to: new paper.Point(cp.x, cp.y + ch),
+                strokeColor: '#ffffff',
+                strokeWidth: 1.5
+            });
+
+            // Label
+            new paper.PointText({
+                point: new paper.Point(c.x, c.y - handleRadius - 5),
+                content: labels[i],
+                fillColor: '#ffffff',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                fontSize: 12,
+                justification: 'center'
+            });
+
+            group.addChild(circle);
+            calibrationHandles.push({ idx: i, center: c });
+        }
+
+        // Instructions text — placed on the table surface (center of playing area)
+        var rail = cfg.railWidth;
+        var textPos = T_default(rail + cfg.playWidth / 2, rail + cfg.playHeight / 2);
+        new paper.PointText({
+            point: textPos,
+            content: 'CALIBRATION',
+            fillColor: 'rgba(255,100,0,0.9)',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: S(2),
+            justification: 'center'
+        });
+        new paper.PointText({
+            point: new paper.Point(textPos.x, textPos.y + S(2.5)),
+            content: 'Drag corners to match table',
+            fillColor: 'rgba(255,100,0,0.7)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: S(1.2),
+            justification: 'center'
+        });
+        new paper.PointText({
+            point: new paper.Point(textPos.x, textPos.y + S(4.5)),
+            content: 'K = save    Shift+K = reset',
+            fillColor: 'rgba(255,100,0,0.5)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: S(1),
+            justification: 'center'
+        });
+    }
+
+    // Hit test calibration handles
+    function hitCalibrationHandle(canvasPoint) {
+        var threshold = 20;
+        var corners = [
+            calibrationCorners.tl, calibrationCorners.tr,
+            calibrationCorners.br, calibrationCorners.bl
+        ];
+        for (var i = 0; i < 4; i++) {
+            var dx = canvasPoint.x - corners[i].x;
+            var dy = canvasPoint.y - corners[i].y;
+            if (Math.sqrt(dx * dx + dy * dy) <= threshold) return i;
+        }
+        return -1;
+    }
+
+    // ── Pointer tool (handles menu clicks + drill aiming + ball drag + calibration) ──
 
     pointerTool.onMouseDown = function (event) {
+        // Calibration mode: handle dragging
+        if (calibrationMode) {
+            calibrationDragIdx = hitCalibrationHandle(event.point);
+            return;
+        }
+
         // Check UI layer first (menu buttons)
         if (appMode === 'menu' || appMode === 'drillList') {
             var uiHit = hitUI(event.point);
@@ -1582,6 +1912,14 @@
     };
 
     pointerTool.onMouseDrag = function (event) {
+        // Calibration drag
+        if (calibrationMode && calibrationDragIdx >= 0) {
+            var keys = ['tl', 'tr', 'br', 'bl'];
+            calibrationCorners[keys[calibrationDragIdx]] = { x: event.point.x, y: event.point.y };
+            drawCalibrationHandles();
+            return;
+        }
+
         if (aimState && aimState.aiming && balls[0]) {
             var tablePos = invT(event.point);
             drawShotLines(balls[0].tableX, balls[0].tableY, tablePos.x, tablePos.y);
@@ -1603,6 +1941,10 @@
     };
 
     pointerTool.onMouseUp = function () {
+        if (calibrationMode) {
+            calibrationDragIdx = -1;
+            return;
+        }
         if (aimState) aimState = null;
         dragTarget = null;
         dragOffset = null;
@@ -1615,6 +1957,19 @@
             projectionMode = !projectionMode;
             drawTable();
             redrawBalls();
+        }
+        if (e.key === 'K' && e.shiftKey) {
+            // Shift+K = reset calibration
+            resetCalibration();
+            return;
+        }
+        if (e.key === 'k' || e.key === 'K') {
+            if (calibrationMode) {
+                exitCalibrationMode(true);  // save and apply
+            } else {
+                enterCalibrationMode();
+            }
+            return;
         }
 
         if (appMode === 'drill') {
@@ -1630,7 +1985,8 @@
         }
     });
 
-    // ── Initial draw — start on menu ──
+    // ── Initial draw — load calibration, start on menu ──
+    loadCalibration();
     drawTable();
     showMenu();
     paper.view.draw();

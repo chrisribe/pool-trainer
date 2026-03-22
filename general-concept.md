@@ -173,6 +173,42 @@ STATE 2: DRILL (projected on table)
 - Unified `pointer` events (covers mouse, touch, and pen)
 - Works identically on PC and tablet
 
+### Mobile remote control (phone-as-controller)
+
+When practicing at the table, the player needs to advance drills without walking to the rendering device. A phone in your pocket solves this.
+
+**Architecture:**
+```
+Phone browser ←→ WebSocket ←→ server.js ←→ Main browser (projector)
+```
+
+**How it works:**
+- `server.js` (already exists, Express) adds a WebSocket endpoint
+- Main app connects as a WS client, listens for commands
+- Phone opens `http://<local-ip>:3000/remote` — a minimal page with large touch buttons
+- QR code projected on the table at startup for instant phone pairing (encodes the `/remote` URL)
+
+**Remote page UI (phone):**
+```
+┌─────────────────┐
+│                 │
+│   ◀  PREV      │
+│                 │
+│   ▶  NEXT      │   ← big fat touch targets, full-width
+│                 │
+│   ☰  MENU      │
+│                 │
+│  ⚙  CALIBRATE  │   ← optional: nudge corners from phone
+│                 │
+└─────────────────┘
+```
+
+**Commands:** `next`, `prev`, `menu`, `rack9`, `rack8`, `clear`
+
+**Complexity:** Low — ~50 lines server (ws/socket.io), ~30 lines main app listener, ~80 lines remote page. No auth needed on local network.
+
+**Why not Bluetooth keyboard?** Works, but phone is always in your pocket. The remote page can also show drill info (name, step count) that isn't visible on the projected table from all angles.
+
 ### Optional: physics simulation
 
 You already have **Matter.js** in your lib folder. You could add an optional "simulate shot" feature:
@@ -191,12 +227,13 @@ The core is much simpler than the SVG editor because:
 
 ### Suggested build order
 
-1. **Table renderer** — accurate proportions, pockets, diamonds on Paper.js canvas, black background
-2. **Ball placement** — draggable numbered balls with snapping
-3. **Shot lines** — click cue ball, drag to set aim, show projected paths
-4. **Drill save/load** — serialize ball positions + shot lines to JSON
-5. **Drill library** — menu projected on table, browse/load drills with tap navigation
-6. **Calibration mode** — align projected table to physical table
-7. **Touch navigation** — tap = next, hold/two-finger = exit to menu, large touch targets
-8. **Polish** — English indicators, speed markers, difficulty tags
+1. **Table renderer** — accurate proportions, pockets, diamonds on Paper.js canvas, black background ✅
+2. **Ball placement** — draggable numbered balls with snapping ✅
+3. **Shot lines** — click cue ball, drag to set aim, show projected paths ✅
+4. **Drill save/load** — serialize ball positions + shot lines to JSON ✅
+5. **Drill library** — menu projected on table, browse/load drills with tap navigation ✅
+6. **Projection mode + Calibration** — P=toggle projection overlay, K=4-corner homography calibration ✅
+7. **Mobile remote** — WebSocket phone controller (next/prev/menu via big touch buttons, QR code pairing)
+8. **Touch navigation** — tap = next, hold/two-finger = exit to menu, large touch targets
+9. **Polish** — English indicators, speed markers, difficulty tags
 
