@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pool Trainer Remote</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; background: #1a1a2e; color: #fff; font-family: Arial, sans-serif;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none;
+    overflow: hidden; }
+
+.container { display: flex; flex-direction: column; height: 100%; padding: 10px; gap: 8px; }
+
+.status { text-align: center; font-size: 13px; padding: 4px; color: #888; }
+.status.connected { color: #0f0; }
+.status.disconnected { color: #f44; }
+
+.info { text-align: center; font-size: 16px; color: #ccc; padding: 6px; min-height: 28px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.btn-row { display: flex; gap: 6px; }
+
+.btn { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column;
+    border: 2px solid #555; border-radius: 12px; background: #2a2a3e; color: #fff;
+    font-size: 15px; font-weight: bold; cursor: pointer; transition: background 0.1s;
+    min-height: 0; padding: 10px 4px; }
+.btn:active { background: #444; }
+.btn .icon { font-size: 32px; margin-bottom: 2px; }
+
+/* View switching */
+.view { display: none; flex-direction: column; flex: 1; gap: 8px; }
+.view.active { display: flex; }
+
+/* Menu nav */
+.btn-up, .btn-down { border-color: #58f; }
+.btn-up:active, .btn-down:active { background: #58f; }
+.btn-select { border-color: #0a0; background: #1a3a1a; }
+.btn-select:active { background: #0a0; }
+.btn-back { border-color: #a55; }
+.btn-back:active { background: #a55; }
+
+/* Drill nav */
+.btn-next { border-color: #0a0; }
+.btn-next:active { background: #0a0; }
+.btn-prev { border-color: #666; }
+.btn-prev:active { background: #444; }
+.btn-menu { border-color: #58f; }
+.btn-menu:active { background: #58f; }
+
+.btn-rack { border-color: #448; }
+.btn-rack:active { background: #448; }
+.btn-util { border-color: #555; }
+.btn-util:active { background: #555; }
+
+.section-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px;
+    padding: 2px 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="status disconnected" id="status">Connecting...</div>
+    <div class="info" id="info">Look at the table</div>
+
+    <!-- MENU VIEW: vertical nav -->
+    <div class="view active" id="view-menu">
+        <div class="btn btn-up" data-action="up" style="flex:1.5"><span class="icon">▲</span>UP</div>
+        <div class="btn-row" style="flex:1.5">
+            <div class="btn btn-back" data-action="back"><span class="icon">◀</span>BACK</div>
+            <div class="btn btn-select" data-action="select"><span class="icon">✓</span>SELECT</div>
+        </div>
+        <div class="btn btn-down" data-action="down" style="flex:1.5"><span class="icon">▼</span>DOWN</div>
+    </div>
+
+    <!-- DRILL VIEW: prev/next + menu toggle -->
+    <div class="view" id="view-drill">
+        <div class="btn-row" style="flex:3">
+            <div class="btn btn-prev" data-action="prev"><span class="icon">◀</span>PREV</div>
+            <div class="btn btn-next" data-action="next"><span class="icon">▶</span>NEXT</div>
+        </div>
+        <div class="btn btn-menu" data-action="menu" style="flex:1"><span class="icon">☰</span>MENU</div>
+    </div>
+
+    <!-- Utilities: always visible -->
+    <div class="section-label">Quick Actions</div>
+    <div class="btn-row" style="flex:0">
+        <div class="btn btn-rack" data-action="rack9">9-BALL</div>
+        <div class="btn btn-rack" data-action="rack8">8-BALL</div>
+        <div class="btn btn-util" data-action="clear">CLEAR</div>
+        <div class="btn btn-util" data-action="projection">PROJ</div>
+    </div>
+</div>
+
+<script>
+var ws, statusEl, infoEl;
+var lastTouchTime = 0;
+var initialized = false;
+var currentMode = '';
+var reconnectTimer = null;
+
+function init() {
+    if (initialized) return;
+    initialized = true;
+    statusEl = document.getElementById('status');
+    infoEl = document.getElementById('info');
+
+    var btns = document.querySelectorAll('[data-action]');
+    for (var i = 0; i < btns.length; i++) {
+        (function (btn) {
+            btn.addEventListener('touchstart', function (e) {
+                e.preventDefault();
+                lastTouchTime = Date.now();
+                send(btn.getAttribute('data-action'));
+            }, { passive: false });
+            btn.addEventListener('mousedown', function () {
+                if (Date.now() - lastTouchTime < 500) return;
+                send(btn.getAttribute('data-action'));
+            });
+        })(btns[i]);
+    }
+
+    // Reconnect when phone screen unlocks / tab regains focus
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && (!ws || ws.readyState > WebSocket.OPEN)) {
+            clearTimeout(reconnectTimer);
+            connect();
+        }
+    });
+
+    connect();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+if (document.readyState !== 'loading') init();
+
+function switchView(mode) {
+    var menuView = document.getElementById('view-menu');
+    var drillView = document.getElementById('view-drill');
+    if (mode === 'drill') {
+        menuView.className = 'view';
+        drillView.className = 'view active';
+    } else {
+        menuView.className = 'view active';
+        drillView.className = 'view';
+    }
+}
+
+function connect() {
+    if (ws && ws.readyState <= WebSocket.OPEN) return;
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host + '/ws/remote');
+
+    ws.onopen = function () {
+        statusEl.textContent = 'Connected';
+        statusEl.className = 'status connected';
+        send('requestStatus');
+    };
+
+    ws.onmessage = function (e) {
+        try {
+            var msg = JSON.parse(e.data);
+            if (msg.type === 'status') {
+                if (msg.text) infoEl.textContent = msg.text;
+                if (msg.mode && msg.mode !== currentMode) {
+                    currentMode = msg.mode;
+                    switchView(currentMode);
+                }
+            }
+        } catch (err) {}
+    };
+
+    ws.onclose = function () {
+        statusEl.textContent = 'Disconnected — reconnecting...';
+        statusEl.className = 'status disconnected';
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 2000);
+    };
+
+    ws.onerror = function () { ws.close(); };
+}
+
+function send(action) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: action }));
+    }
+}
+</script>
+</body>
+</html>

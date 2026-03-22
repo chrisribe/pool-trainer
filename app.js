@@ -18,6 +18,7 @@
     var shotLayer  = new paper.Layer({ name: 'shots' });
     var ballLayer  = new paper.Layer({ name: 'balls' });
     var uiLayer    = new paper.Layer({ name: 'ui' });
+    var qrLayer    = new paper.Layer({ name: 'qr' });
 
     // ── App state ──
     var appMode = 'menu';  // 'menu' | 'drill'
@@ -605,14 +606,18 @@
     });
 
     // ── Resize handling ──
+    var lastResizeW = 0, lastResizeH = 0;
     paper.view.onResize = function () {
+        var w = paper.view.size.width, h = paper.view.size.height;
+        if (w === lastResizeW && h === lastResizeH) return;
+        lastResizeW = w; lastResizeH = h;
         rebuildCalibration();
         drawTable();
         redrawBalls();
         clearShotLines();
         if (calibrationMode) drawCalibrationHandles();
-        if (appMode === 'menu') showMenu();
-        else if (appMode === 'drillList') showMenu(); // reset to menu on resize
+        if (appMode === 'menu') enterMenu();
+        else if (appMode === 'drillList') enterMenu(); // reset to menu on resize
         else if (appMode === 'drill' && activeDrills) showDrillHUD();
     };
 
@@ -1254,6 +1259,8 @@
     var activeCategory = null; // current category name
     var drillListPage = 0;     // current page in drill list
     var drillListCatId = null; // current category id in drill list
+    var menuCursor = 0;        // highlighted item index in menu/drillList
+    var menuItemCount = 0;     // total selectable items on current screen
 
     // Fetch a drill JSON file (with cache)
     function fetchDrills(catalogEntry, callback) {
@@ -1330,16 +1337,60 @@
         var gap = btnH * 0.35;
         var startY = fb.top + fh * 0.24;
 
+        // Resume item when drills are active
+        var hasResume = !!(activeDrills && activeDrills.length);
+        var resumeOffset = 0;
+        if (hasResume) {
+            resumeOffset = 1;
+            var rY = startY;
+            var rSelected = (menuCursor === 0);
+            var drill = activeDrills[activeDrillIdx];
+            var rLabel = '▶ Resume: ' + drill.name + '  (' + (activeDrillIdx + 1) + '/' + activeDrills.length + ')';
+            new paper.Path.Rectangle({
+                from: new paper.Point(cx - btnW / 2, rY),
+                to: new paper.Point(cx + btnW / 2, rY + btnH),
+                radius: 8,
+                fillColor: rSelected ? 'rgba(0,255,100,0.2)' : 'rgba(0,255,100,0.08)',
+                strokeColor: rSelected ? '#00ff66' : 'rgba(0,255,100,0.4)',
+                strokeWidth: rSelected ? 2 : 1
+            }).data = { action: 'resume' };
+            new paper.PointText({
+                point: new paper.Point(cx, rY + btnH * 0.65),
+                content: rLabel,
+                fillColor: '#00ff66',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                fontSize: btnH * 0.35,
+                justification: 'center'
+            }).data = { action: 'resume' };
+            if (rSelected) {
+                new paper.PointText({
+                    point: new paper.Point(cx - btnW / 2 - btnH * 0.4, rY + btnH * 0.65),
+                    content: '▶',
+                    fillColor: '#00ff66',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.4,
+                    justification: 'center'
+                });
+            }
+            startY += btnH + gap * 2;
+        }
+
+        // Total items = resume? + categories + free play
+        menuItemCount = resumeOffset + catalog.length + 1;
+        if (menuCursor >= menuItemCount) menuCursor = menuItemCount - 1;
+        if (menuCursor < 0) menuCursor = 0;
+
         catalog.forEach(function (cat, i) {
             var y = startY + i * (btnH + gap);
-
+            var isSelected = ((i + resumeOffset) === menuCursor);
             var btn = new paper.Path.Rectangle({
                 from: new paper.Point(cx - btnW / 2, y),
                 to: new paper.Point(cx + btnW / 2, y + btnH),
                 radius: 8,
-                fillColor: 'rgba(255,255,255,0.08)',
-                strokeColor: 'rgba(255,255,255,0.3)',
-                strokeWidth: 1
+                fillColor: isSelected ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)',
+                strokeColor: isSelected ? '#ffffff' : 'rgba(255,255,255,0.3)',
+                strokeWidth: isSelected ? 2 : 1
             });
             btn.data = { action: 'category', categoryId: cat.id };
 
@@ -1353,17 +1404,31 @@
                 justification: 'center'
             });
             label.data = { action: 'category', categoryId: cat.id };
+
+            // Cursor indicator
+            if (isSelected) {
+                new paper.PointText({
+                    point: new paper.Point(cx - btnW / 2 - btnH * 0.4, y + btnH * 0.65),
+                    content: '▶',
+                    fillColor: '#ffffff',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.4,
+                    justification: 'center'
+                });
+            }
         });
 
         // Free play button
+        var fpIdx = resumeOffset + catalog.length;
         var fpY = startY + catalog.length * (btnH + gap) + gap;
+        var fpSelected = (menuCursor === fpIdx);
         var fpBtn = new paper.Path.Rectangle({
             from: new paper.Point(cx - btnW / 2, fpY),
             to: new paper.Point(cx + btnW / 2, fpY + btnH),
             radius: 8,
-            fillColor: 'rgba(0,229,255,0.1)',
-            strokeColor: 'rgba(0,229,255,0.4)',
-            strokeWidth: 1
+            fillColor: fpSelected ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.1)',
+            strokeColor: fpSelected ? '#00e5ff' : 'rgba(0,229,255,0.4)',
+            strokeWidth: fpSelected ? 2 : 1
         });
         fpBtn.data = { action: 'freeplay' };
 
@@ -1377,15 +1442,35 @@
             justification: 'center'
         }).data = { action: 'freeplay' };
 
+        if (fpSelected) {
+            new paper.PointText({
+                point: new paper.Point(cx - btnW / 2 - btnH * 0.4, fpY + btnH * 0.65),
+                content: '▶',
+                fillColor: '#00e5ff',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: btnH * 0.4,
+                justification: 'center'
+            });
+        }
+
         // Keyboard hint
         new paper.PointText({
-            point: new paper.Point(cx, fb.bottom - fh * 0.03),
-            content: 'Press F for fullscreen',
+            point: new paper.Point(cx, fb.bottom - fh * 0.12),
+            content: '↑↓ Navigate   Enter Select   F Fullscreen   P Projection   K Calibrate',
             fillColor: 'rgba(255,255,255,0.25)',
             fontFamily: 'Arial, sans-serif',
             fontSize: Math.min(fw, fh) * 0.02,
             justification: 'center'
         });
+
+        // Show QR layer (it persists across cursor redraws)
+        qrLayer.visible = true;
+    }
+
+    // Full menu entry — call once when entering menu, not on cursor moves
+    function enterMenu() {
+        showMenu();
+        drawQRCode();
     }
 
     // Show drill list for a category (with pagination)
@@ -1438,10 +1523,17 @@
             var startIdx = pg * perPage;
             var endIdx = Math.min(startIdx + perPage, drills.length);
 
+            // Items on this page = drills + back button
+            var pageItems = endIdx - startIdx;
+            menuItemCount = pageItems + 1; // +1 for back button
+            if (menuCursor >= menuItemCount) menuCursor = menuItemCount - 1;
+            if (menuCursor < 0) menuCursor = 0;
+
             for (var j = startIdx; j < endIdx; j++) {
                 var drill = drills[j];
                 var row = j - startIdx;
                 var y = listTop + row * itemH;
+                var isSelected = (row === menuCursor);
 
                 var stars = '';
                 for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '★' : '☆';
@@ -1450,11 +1542,22 @@
                     from: new paper.Point(cx - btnW / 2, y),
                     to: new paper.Point(cx + btnW / 2, y + btnH),
                     radius: 6,
-                    fillColor: 'rgba(255,255,255,0.06)',
-                    strokeColor: 'rgba(255,255,255,0.2)',
-                    strokeWidth: 1
+                    fillColor: isSelected ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)',
+                    strokeColor: isSelected ? '#ffffff' : 'rgba(255,255,255,0.2)',
+                    strokeWidth: isSelected ? 2 : 1
                 });
                 btn.data = { action: 'loadDrill', drillIdx: j };
+
+                if (isSelected) {
+                    new paper.PointText({
+                        point: new paper.Point(cx - btnW / 2 - btnH * 0.35, y + btnH * 0.65),
+                        content: '▶',
+                        fillColor: '#ffffff',
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: btnH * 0.36,
+                        justification: 'center'
+                    });
+                }
 
                 new paper.PointText({
                     point: new paper.Point(cx - btnW * 0.42, y + btnH * 0.65),
@@ -1479,6 +1582,7 @@
             var botY = fb.bottom - fh * 0.08;
             var navBtnW = btnH * 1.2;  // square-ish nav buttons
             var backW = btnW * 0.3;
+            var backSelected = (menuCursor === pageItems); // last item = back
 
             // Back button (far left)
             var bkL = cx - btnW / 2;
@@ -1486,20 +1590,31 @@
                 from: new paper.Point(bkL, botY),
                 to: new paper.Point(bkL + backW, botY + btnH),
                 radius: 6,
-                fillColor: 'rgba(255,255,255,0.04)',
-                strokeColor: 'rgba(255,255,255,0.2)',
-                strokeWidth: 1
+                fillColor: backSelected ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.04)',
+                strokeColor: backSelected ? '#ffffff' : 'rgba(255,255,255,0.2)',
+                strokeWidth: backSelected ? 2 : 1
             });
             backBtn.data = { action: 'backToMenu' };
 
             new paper.PointText({
                 point: new paper.Point(bkL + backW / 2, botY + btnH * 0.65),
                 content: '← Back',
-                fillColor: 'rgba(255,255,255,0.6)',
+                fillColor: backSelected ? '#ffffff' : 'rgba(255,255,255,0.6)',
                 fontFamily: 'Arial, sans-serif',
                 fontSize: btnH * 0.34,
                 justification: 'center'
             }).data = { action: 'backToMenu' };
+
+            if (backSelected) {
+                new paper.PointText({
+                    point: new paper.Point(bkL - btnH * 0.35, botY + btnH * 0.65),
+                    content: '▶',
+                    fillColor: '#ffffff',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.34,
+                    justification: 'center'
+                });
+            }
 
             // Page nav (right-aligned): [◀] [1/2] [▶]
             if (totalPages > 1) {
@@ -1659,6 +1774,7 @@
 
     function startDrill(idx) {
         appMode = 'drill';
+        qrLayer.visible = false;
         activeDrillIdx = idx;
         loadDrill(activeDrills[idx]);
         showDrillHUD();
@@ -1676,6 +1792,86 @@
         if (activeDrillIdx > 0) {
             startDrill(activeDrillIdx - 1);
         }
+    }
+
+    // ── Menu cursor navigation (D-pad / arrow keys / remote) ──
+
+    function menuNav(dir) {
+        if (appMode !== 'menu' && appMode !== 'drillList') return;
+        if (dir === 'up') {
+            menuCursor = Math.max(0, menuCursor - 1);
+        } else if (dir === 'down') {
+            menuCursor = Math.min(menuItemCount - 1, menuCursor + 1);
+        }
+        // Redraw the current screen with updated cursor
+        if (appMode === 'menu') showMenu();
+        else if (appMode === 'drillList') showDrillList(drillListCatId, drillListPage);
+        sendRemoteStatus();
+    }
+
+    function menuSelect() {
+        if (appMode === 'menu') {
+            var catalog = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
+            var hasResume = !!(activeDrills && activeDrills.length);
+            var resumeOffset = hasResume ? 1 : 0;
+            if (hasResume && menuCursor === 0) {
+                // Resume current drill
+                startDrill(activeDrillIdx);
+                sendRemoteStatus();
+                return;
+            }
+            var catIdx = menuCursor - resumeOffset;
+            if (catIdx < catalog.length) {
+                // Open category drill list
+                var catId = catalog[catIdx].id;
+                appMode = 'drillList';
+                qrLayer.visible = false;
+                menuCursor = 0;
+                showDrillList(catId, 0);
+            } else if (catIdx === catalog.length) {
+                // Free play
+                appMode = 'drill';
+                qrLayer.visible = false;
+                activeDrills = null;
+                activeDrillIdx = 0;
+                activeCategory = null;
+                clearBalls();
+                clearShotLines();
+                uiLayer.removeChildren();
+                rack9Ball();
+            }
+        } else if (appMode === 'drillList') {
+            // Check what's under the cursor
+            var catalog2 = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
+            var drills = drillCache[drillListCatId];
+            if (!drills) return;
+            var perPage = menuItemCount - 1; // items on page (excluding back)
+            var startIdx = drillListPage * perPage;
+            if (menuCursor < perPage) {
+                // It's a drill
+                var drillIdx = startIdx + menuCursor;
+                if (drillIdx < drills.length) {
+                    startDrill(drillIdx);
+                }
+            } else {
+                // Back button
+                menuCursor = 0;
+                enterMenu();
+            }
+        }
+        sendRemoteStatus();
+    }
+
+    function menuBack() {
+        if (appMode === 'drillList') {
+            menuCursor = 0;
+            enterMenu();
+        } else if (appMode === 'drill') {
+            // Preserve activeDrills/activeDrillIdx so Resume works
+            menuCursor = 0;
+            enterMenu();
+        }
+        sendRemoteStatus();
     }
 
     // ── UI hit testing ──
@@ -1869,7 +2065,7 @@
                 } else if (uiHit.action === 'loadDrill') {
                     startDrill(uiHit.drillIdx);
                 } else if (uiHit.action === 'backToMenu') {
-                    showMenu();
+                    enterMenu();
                 } else if (uiHit.action === 'prevPage') {
                     showDrillList(drillListCatId, drillListPage - 1);
                 } else if (uiHit.action === 'nextPage') {
@@ -1975,20 +2171,155 @@
         if (appMode === 'drill') {
             if (e.key === 'ArrowRight' || e.key === ' ') nextDrill();
             if (e.key === 'ArrowLeft') prevDrill();
-            if (e.key === 'm' || e.key === 'M' || e.key === 'Escape') showMenu();
+            if (e.key === 'm' || e.key === 'M' || e.key === 'Escape') menuBack();
             if (e.key === '9') { activeDrills = null; rack9Ball(); uiLayer.removeChildren(); }
             if (e.key === '8') { activeDrills = null; rack8Ball(); uiLayer.removeChildren(); }
             if (e.key === 'c' || e.key === 'C') clearBalls();
             if (e.key === 'e' || e.key === 'E') exportDrill();
         } else if (appMode === 'menu' || appMode === 'drillList') {
-            if (e.key === 'Escape' && appMode === 'drillList') showMenu();
+            if (e.key === 'ArrowUp') { e.preventDefault(); menuNav('up'); }
+            if (e.key === 'ArrowDown') { e.preventDefault(); menuNav('down'); }
+            if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); menuSelect(); }
+            if (e.key === 'Escape' || e.key === 'ArrowLeft' || e.key === 'Backspace') {
+                if (appMode === 'drillList') { e.preventDefault(); menuBack(); }
+            }
         }
     });
+
+    // ══════════════════════════════════════════════════════════════
+    //  WEBSOCKET REMOTE CONTROL (Step 7)
+    // ══════════════════════════════════════════════════════════════
+
+    var remoteWs = null;
+    var cachedQR = null; // { qr, url } — fetched once from server
+
+    // QR code lives on its own layer — never cleared by menu redraws
+    function drawQRCode() {
+        qrLayer.removeChildren();
+        qrLayer.activate();
+        qrLayer.visible = (appMode === 'menu');
+        if (appMode !== 'menu') return;
+
+        var fb = getFeltBounds();
+        var fw = fb.right - fb.left;
+        var fh = fb.bottom - fb.top;
+        var qrSize = Math.min(fw, fh) * 0.14;
+        var qrX = fb.right - qrSize * 0.8;
+        var qrY = fb.top + fh * 0.5;
+
+        function render(qrDataUrl) {
+            if (appMode !== 'menu') return;
+            qrLayer.activate();
+            var raster = new paper.Raster({
+                source: qrDataUrl,
+                position: new paper.Point(qrX, qrY)
+            });
+            raster.onLoad = function () {
+                raster.size = new paper.Size(qrSize, qrSize);
+            };
+            new paper.PointText({
+                point: new paper.Point(qrX, qrY - qrSize / 2 - Math.min(fw, fh) * 0.015),
+                content: '📱 Scan to control',
+                fillColor: 'rgba(255,255,255,0.4)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: Math.min(fw, fh) * 0.018,
+                justification: 'center'
+            });
+        }
+
+        if (cachedQR) { render(cachedQR.qr); }
+        else { fetchRemoteQR(function (url) { render(url); }); }
+    }
+
+    function fetchRemoteQR(callback) {
+        if (cachedQR) { callback(cachedQR.qr, cachedQR.url); return; }
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', '/api/remote-qr', true);
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                try {
+                    cachedQR = JSON.parse(xhr.responseText);
+                    callback(cachedQR.qr, cachedQR.url);
+                } catch (e) {}
+            }
+        };
+        xhr.send();
+    }
+
+    function connectRemote() {
+        var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        remoteWs = new WebSocket(proto + '//' + location.host + '/ws/main');
+
+        remoteWs.onmessage = function (e) {
+            try {
+                var msg = JSON.parse(e.data);
+                handleRemoteCommand(msg.action);
+            } catch (err) {}
+        };
+
+        remoteWs.onclose = function () {
+            setTimeout(connectRemote, 3000);
+        };
+
+        remoteWs.onerror = function () { remoteWs.close(); };
+    }
+
+    function handleRemoteCommand(action) {
+        switch (action) {
+            // D-pad navigation (works in menu/drillList)
+            case 'up':         menuNav('up'); return;
+            case 'down':       menuNav('down'); return;
+            case 'select':     menuSelect(); return;
+            case 'back':       menuBack(); return;
+            // Drill navigation (works in drill mode)
+            case 'next':       nextDrill(); break;
+            case 'prev':       prevDrill(); break;
+            case 'menu':       menuBack(); break;
+            // Quick actions
+            case 'rack9':      activeDrills = null; rack9Ball(); uiLayer.removeChildren(); break;
+            case 'rack8':      activeDrills = null; rack8Ball(); uiLayer.removeChildren(); break;
+            case 'clear':      clearBalls(); clearShotLines(); break;
+            case 'projection':
+                projectionMode = !projectionMode;
+                drawTable();
+                redrawBalls();
+                break;
+            case 'fullscreen': enterFullscreen(); break;
+            case 'requestStatus': break; // just triggers sendRemoteStatus below
+        }
+        // Send status back to remote
+        sendRemoteStatus();
+    }
+
+    function sendRemoteStatus() {
+        if (!remoteWs || remoteWs.readyState !== WebSocket.OPEN) return;
+        var text = '';
+        if (appMode === 'drill' && activeDrills) {
+            var drill = activeDrills[activeDrillIdx];
+            text = drill.name + '  (' + (activeDrillIdx + 1) + '/' + activeDrills.length + ')';
+            if (activeCategory) text = activeCategory + ': ' + text;
+        } else if (appMode === 'drill') {
+            text = 'Free Play';
+        } else if (appMode === 'menu') {
+            text = 'Menu';
+        } else if (appMode === 'drillList') {
+            text = activeCategory || 'Drills';
+        }
+        var remoteMode = (appMode === 'drill') ? 'drill' : 'menu';
+        remoteWs.send(JSON.stringify({
+            type: 'status',
+            text: text,
+            mode: remoteMode,
+            hasDrills: !!(activeDrills && activeDrills.length)
+        }));
+    }
+
+    connectRemote();
 
     // ── Initial draw — load calibration, start on menu ──
     loadCalibration();
     drawTable();
-    showMenu();
+    enterMenu();
     paper.view.draw();
 
 })();
