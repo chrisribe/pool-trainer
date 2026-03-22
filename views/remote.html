@@ -107,6 +107,18 @@ body.app-loading .loading-overlay {
 
 .section-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px;
     padding: 2px 4px; }
+
+/* Edit mode */
+.btn-edit-nav { border-color: #0ef; }
+.btn-edit-nav:active { background: #0ef; color: #000; }
+.btn-edit-adj { border-color: #58f; }
+.btn-edit-adj:active { background: #58f; }
+.btn-edit-done { border-color: #a55; }
+.btn-edit-done:active { background: #a55; }
+.btn-edit-save { border-color: #0a0; background: #1a3a1a; }
+.btn-edit-save:active { background: #0a0; }
+.btn-edit-new { border-color: #f0a; background: #2a1a2e; }
+.btn-edit-new:active { background: #f0a; }
 </style>
 </head>
 <body>
@@ -131,6 +143,21 @@ body.app-loading .loading-overlay {
             <div class="btn btn-next" data-action="next"><span class="icon">▶</span>NEXT</div>
         </div>
         <div class="btn btn-menu" data-action="menu" style="flex:1"><span class="icon">☰</span>MENU</div>
+    </div>
+
+    <!-- EDIT VIEW: directional controls for cue overlay editing -->
+    <div class="view" id="view-edit">
+        <div class="btn btn-edit-nav" data-action="editUp" style="flex:1.2"><span class="icon">▲</span>UP</div>
+        <div class="btn-row" style="flex:1.2">
+            <div class="btn btn-edit-adj" data-action="editLeft"><span class="icon">◀</span>−</div>
+            <div class="btn btn-edit-adj" data-action="editRight"><span class="icon">▶</span>+</div>
+        </div>
+        <div class="btn btn-edit-nav" data-action="editDown" style="flex:1.2"><span class="icon">▼</span>DOWN</div>
+        <div class="btn-row" style="flex:0.8">
+            <div class="btn btn-edit-done" data-action="editDone"><span class="icon">✕</span>DONE</div>
+            <div class="btn btn-edit-save" data-action="editSave"><span class="icon">💾</span>SAVE</div>
+            <div class="btn btn-edit-new" data-action="editNew"><span class="icon">➕</span>NEW</div>
+        </div>
     </div>
 
     <!-- Utilities: always visible -->
@@ -229,12 +256,16 @@ if (document.readyState !== 'loading') init();
 function switchView(mode) {
     var menuView = document.getElementById('view-menu');
     var drillView = document.getElementById('view-drill');
-    if (mode === 'drill') {
-        menuView.className = 'view';
+    var editView = document.getElementById('view-edit');
+    menuView.className = 'view';
+    drillView.className = 'view';
+    editView.className = 'view';
+    if (mode === 'edit') {
+        editView.className = 'view active';
+    } else if (mode === 'drill') {
         drillView.className = 'view active';
     } else {
         menuView.className = 'view active';
-        drillView.className = 'view';
     }
 }
 

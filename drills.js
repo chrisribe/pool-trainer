@@ -33,12 +33,21 @@
                 y: Math.round((b.tableY - cfg.railWidth) * 100) / 100
             });
         });
-        return {
+        var drill = {
             name: name || 'Untitled Drill',
             description: description || '',
             difficulty: difficulty || 1,
             balls: ballList
         };
+        // Include cueOverlay if present
+        if (PT.cueOverlay) {
+            drill.cueOverlay = {
+                show: PT.cueOverlay.show !== false,
+                tip: PT.cueOverlay.tip || { x: 0, y: 0 },
+                power: (typeof PT.cueOverlay.power === 'number') ? PT.cueOverlay.power : 0.5
+            };
+        }
+        return drill;
     }
 
     function loadDrill(drill) {
@@ -136,6 +145,77 @@
         a.download = 'drill.json';
         a.click();
         URL.revokeObjectURL(url);
+    }
+
+    // Save current drill to server (update in place)
+    function saveDrill(callback) {
+        if (!activeDrills || !drillListCatId) {
+            if (callback) callback(false, 'No active drill category');
+            return;
+        }
+        var existing = activeDrills[activeDrillIdx];
+        var drill = serializeDrill(
+            existing.name,
+            existing.description,
+            existing.difficulty
+        );
+        // Preserve fields we don't edit
+        if (existing.cueTarget) drill.cueTarget = existing.cueTarget;
+        // Capture current aim if available, otherwise keep original
+        if (PT.lastAimPoint) {
+            var rail = cfg.railWidth;
+            drill.aimLine = {
+                x: Math.round((PT.lastAimPoint.x - rail) * 100) / 100,
+                y: Math.round((PT.lastAimPoint.y - rail) * 100) / 100
+            };
+        } else if (existing.aimLine) {
+            drill.aimLine = existing.aimLine;
+        }
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('PUT', '/api/drills/' + drillListCatId + '/' + activeDrillIdx, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function () {
+            var ok = xhr.status === 200;
+            // Update local cache so navigating back shows new data
+            if (ok) {
+                activeDrills[activeDrillIdx] = drill;
+                if (drillCache[drillListCatId]) drillCache[drillListCatId][activeDrillIdx] = drill;
+            }
+            if (callback) callback(ok, ok ? 'Saved' : 'Save failed');
+        };
+        xhr.onerror = function () { if (callback) callback(false, 'Network error'); };
+        xhr.send(JSON.stringify(drill));
+    }
+
+    // Save as new drill appended to current category
+    function saveAsNewDrill(name, callback) {
+        if (!drillListCatId) {
+            if (callback) callback(false, 'No active category');
+            return;
+        }
+        var drill = serializeDrill(name || 'New Drill', '', 1);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/drills/' + drillListCatId, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onload = function () {
+            var ok = xhr.status === 200;
+            if (ok) {
+                try {
+                    var resp = JSON.parse(xhr.responseText);
+                    // Add to local cache and navigate to it
+                    if (activeDrills) {
+                        activeDrills.push(drill);
+                        activeDrillIdx = activeDrills.length - 1;
+                    }
+                    if (drillCache[drillListCatId]) drillCache[drillListCatId].push(drill);
+                } catch (e) {}
+            }
+            if (callback) callback(ok, ok ? 'Drill added' : 'Save failed');
+        };
+        xhr.onerror = function () { if (callback) callback(false, 'Network error'); };
+        xhr.send(JSON.stringify(drill));
     }
 
     // ── Fetch drills ──
@@ -759,6 +839,8 @@
     PT.serializeDrill = serializeDrill;
     PT.loadDrill = loadDrill;
     PT.exportDrill = exportDrill;
+    PT.saveDrill = saveDrill;
+    PT.saveAsNewDrill = saveAsNewDrill;
     PT.fetchDrills = fetchDrills;
     PT.getFeltBounds = getFeltBounds;
     PT.showMenu = showMenu;

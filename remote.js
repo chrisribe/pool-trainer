@@ -81,8 +81,31 @@
             case 'prev':       PT.prevDrill(); break;
             case 'menu':       PT.menuBack(); break;
             case 'edit':
-                if (PT.toggleEditMode) { PT.toggleEditMode(); break; }
-                if (PT.enterEditMode) { PT.enterEditMode(); break; }
+                if (PT.toggleEditMode) { PT.toggleEditMode(); }
+                break;
+            case 'editUp':
+                if (PT.editMode) { PT.editCursor = Math.max(0, PT.editCursor - 1); PT.refreshEditView(); }
+                break;
+            case 'editDown':
+                if (PT.editMode) { PT.editCursor = Math.min(PT.editFields.length - 1, PT.editCursor + 1); PT.refreshEditView(); }
+                break;
+            case 'editLeft':
+                if (PT.editMode && PT.editAdjust) { PT.editAdjust(-1); PT.refreshEditView(); }
+                break;
+            case 'editRight':
+                if (PT.editMode && PT.editAdjust) { PT.editAdjust(1); PT.refreshEditView(); }
+                break;
+            case 'editSave':
+                if (PT.saveDrill) { PT.saveDrill(PT.showSaveFeedback); }
+                break;
+            case 'editDone':
+                if (PT.toggleEditMode) { PT.toggleEditMode(); }
+                break;
+            case 'editNew':
+                if (PT.saveAsNewDrill) {
+                    var name = prompt('New drill name:');
+                    if (name) PT.saveAsNewDrill(name, PT.showSaveFeedback);
+                }
                 break;
             case 'rack9':
                 PT.appMode = 'drill';
@@ -126,7 +149,7 @@
         } else if (PT.appMode === 'drillList') {
             text = PT.activeCategory || 'Drills';
         }
-        var remoteMode = (PT.appMode === 'drill') ? 'drill' : 'menu';
+        var remoteMode = PT.editMode ? 'edit' : (PT.appMode === 'drill') ? 'drill' : 'menu';
         socket.emit('cmd', {
             type: 'status',
             text: text,
@@ -136,8 +159,64 @@
         });
     }
 
+    function showSaveFeedback(ok, msg) {
+        PT.uiLayer.activate();
+        var fb = PT.getFeltBounds();
+        var fw = fb.right - fb.left;
+        var cx = fb.left + fw / 2;
+        var cy = fb.top + (fb.bottom - fb.top) * 0.5;
+        var toast = new paper.Group();
+        var pad = fw * 0.12;
+        toast.addChild(new paper.Path.Rectangle({
+            from: new paper.Point(cx - pad, cy - pad * 0.35),
+            to: new paper.Point(cx + pad, cy + pad * 0.35),
+            radius: PT.S(0.3),
+            fillColor: ok ? 'rgba(46,204,113,0.9)' : 'rgba(231,76,60,0.9)'
+        }));
+        toast.addChild(new paper.PointText({
+            point: new paper.Point(cx, cy + fw * 0.012),
+            content: msg || (ok ? 'Saved!' : 'Error'),
+            fillColor: '#fff',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: Math.max(12, fw * 0.03),
+            fontWeight: 'bold',
+            justification: 'center'
+        }));
+        setTimeout(function () { toast.remove(); }, 1500);
+    }
+
+    function toggleEditMode() {
+        if (PT.appMode !== 'drill') return;
+        PT.editMode = !PT.editMode;
+        if (PT.editMode) {
+            // Ensure overlay exists
+            if (!PT.cueOverlay) {
+                PT.cueOverlay = { show: true, tip: { x: 0, y: 0 }, power: 0.5 };
+            }
+            PT.editCursor = 0;
+            refreshEditView();
+        } else {
+            // Exiting: clear edit panel, reload drill to restore aim lines
+            if (PT._editPanelGroup) { PT._editPanelGroup.remove(); PT._editPanelGroup = null; }
+            if (PT.activeDrills && PT.activeDrills.length) {
+                PT.startDrill(PT.activeDrillIdx);
+            }
+            sendRemoteStatus();
+        }
+    }
+
+    function refreshEditView() {
+        // Redraw edit panel and overlay preview
+        if (PT.drawEditPanel) PT.drawEditPanel();
+        if (PT.drawEditOverlayPreview) PT.drawEditOverlayPreview();
+        sendRemoteStatus();
+    }
+
     // ── Exports ──
     PT.drawQRCode = drawQRCode;
     PT.sendRemoteStatus = sendRemoteStatus;
     PT.connectRemote = connectRemote;
+    PT.toggleEditMode = toggleEditMode;
+    PT.refreshEditView = refreshEditView;
+    PT.showSaveFeedback = showSaveFeedback;
 })();

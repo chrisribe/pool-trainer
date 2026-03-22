@@ -154,11 +154,23 @@ window.PT = (function () {
     // ── Aim state (shared between shots.js & input.js) ──
     var aimState = null;
 
+    // ── Last aim point (for saving drill aim) ──
+    var lastAimPoint = null;
+
     // ── Ball selection (for deletion) ──
     var selectedBall = null;  // ball number or null
 
     // ── Cue overlay (per drill) ──
     var cueOverlay = null;
+
+    // ── Edit mode ──
+    var editMode = false;
+    var editCursor = 0;
+    var editFields = [
+        { key: 'tipX',  label: 'Tip X',  min: -0.8, max: 0.8, step: 0.05 },
+        { key: 'tipY',  label: 'Tip Y',  min: -0.8, max: 0.8, step: 0.05 },
+        { key: 'power', label: 'Power',  min: 0,    max: 1,   step: 0.1  }
+    ];
 
     // ── Pointer tool — created once, handlers in input.js ──
     var pointerTool = new paper.Tool();
@@ -213,6 +225,10 @@ window.PT = (function () {
         get aimState() { return aimState; },
         set aimState(v) { aimState = v; },
 
+        // Last aim point
+        get lastAimPoint() { return lastAimPoint; },
+        set lastAimPoint(v) { lastAimPoint = v; },
+
         // Selected ball
         get selectedBall() { return selectedBall; },
         set selectedBall(v) { selectedBall = v; },
@@ -220,6 +236,13 @@ window.PT = (function () {
         // Cue overlay
         get cueOverlay() { return cueOverlay; },
         set cueOverlay(v) { cueOverlay = v; },
+
+        // Edit mode
+        get editMode() { return editMode; },
+        set editMode(v) { editMode = v; },
+        get editCursor() { return editCursor; },
+        set editCursor(v) { editCursor = v; },
+        editFields: editFields,
 
         // Calibration state
         get calibrationCorners() { return calibrationCorners; },

@@ -182,6 +182,20 @@
         }
 
         if (PT.appMode === 'drill') {
+            // Edit mode: arrow keys navigate, E exits
+            if (PT.editMode) {
+                if (e.key === 'ArrowUp')   { e.preventDefault(); PT.editCursor = Math.max(0, PT.editCursor - 1); PT.refreshEditView(); }
+                if (e.key === 'ArrowDown') { e.preventDefault(); PT.editCursor = Math.min(PT.editFields.length - 1, PT.editCursor + 1); PT.refreshEditView(); }
+                if (e.key === 'ArrowLeft')  { e.preventDefault(); PT.editAdjust(-1); PT.refreshEditView(); }
+                if (e.key === 'ArrowRight') { e.preventDefault(); PT.editAdjust(1); PT.refreshEditView(); }
+                if (e.key === 'e' || e.key === 'E' || e.key === 'Escape') { PT.toggleEditMode(); }
+                if (e.key === 's' || e.key === 'S') { PT.saveDrill(PT.showSaveFeedback); }
+                if (e.key === 'n' || e.key === 'N') {
+                    var name = prompt('New drill name:');
+                    if (name) PT.saveAsNewDrill(name, PT.showSaveFeedback);
+                }
+                return;
+            }
             if (e.key === 'ArrowRight' || e.key === ' ') PT.nextDrill();
             if (e.key === 'ArrowLeft') PT.prevDrill();
             if (e.key === 'm' || e.key === 'M' || e.key === 'Escape') PT.menuBack();
@@ -189,7 +203,7 @@
             if (e.key === '9') { PT.activeDrills = null; PT.rack9Ball(); PT.uiLayer.removeChildren(); }
             if (e.key === '8') { PT.activeDrills = null; PT.rack8Ball(); PT.uiLayer.removeChildren(); }
             if (e.key === 'c' || e.key === 'C') PT.clearBalls();
-            if (e.key === 'e' || e.key === 'E') PT.exportDrill();
+            if (e.key === 'e' || e.key === 'E') PT.toggleEditMode();
         } else if (PT.appMode === 'menu' || PT.appMode === 'drillList') {
             if (e.key === 'ArrowUp') { e.preventDefault(); PT.menuNav('up'); }
             if (e.key === 'ArrowDown') { e.preventDefault(); PT.menuNav('down'); }

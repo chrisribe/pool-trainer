@@ -151,14 +151,10 @@
         var r = S(cfg.ballRadius) * size;
         var offsetMult = (typeof overlay.offset === 'number') ? overlay.offset : 2.2;
         var offset = r * offsetMult;
-        var side = overlay.side || 'right';
 
-        var leftPx = -ny;
-        var leftPy = nx;
-        var rightPx = ny;
-        var rightPy = -nx;
-        var px = (side === 'left') ? leftPx : rightPx;
-        var py = (side === 'left') ? leftPy : rightPy;
+        // Place overlay 180° from aim direction (behind the cue ball)
+        var px = -nx;
+        var py = -ny;
 
         var overlayCenter = new paper.Point(cueCenter.x + px * offset, cueCenter.y + py * offset);
 
@@ -244,6 +240,9 @@
     function drawShotLines(cueTx, cueTy, aimTx, aimTy) {
         clearShotLines();
         PT.shotLayer.activate();
+
+        // Store aim point for drill save
+        PT.lastAimPoint = { x: aimTx, y: aimTy };
 
         var aimDx = aimTx - cueTx;
         var aimDy = aimTy - cueTy;
@@ -392,6 +391,197 @@
         });
     }
 
+    // ── Edit panel helpers ──
+
+    function getEditFieldValue(overlay, key) {
+        if (!overlay) return 0;
+        if (key === 'tipX') return (overlay.tip && overlay.tip.x) || 0;
+        if (key === 'tipY') return (overlay.tip && overlay.tip.y) || 0;
+        if (key === 'power') return (typeof overlay.power === 'number') ? overlay.power : 0.5;
+        return 0;
+    }
+
+    function setEditFieldValue(overlay, key, val) {
+        if (!overlay) return;
+        if (key === 'tipX') { if (!overlay.tip) overlay.tip = { x: 0, y: 0 }; overlay.tip.x = val; }
+        else if (key === 'tipY') { if (!overlay.tip) overlay.tip = { x: 0, y: 0 }; overlay.tip.y = val; }
+        else if (key === 'power') { overlay.power = val; }
+    }
+
+    function editAdjust(dir) {
+        var overlay = PT.cueOverlay;
+        if (!overlay || !PT.editMode) return;
+        var field = PT.editFields[PT.editCursor];
+        if (!field) return;
+
+        if (field.values) {
+            // Toggle through discrete values
+            var cur = getEditFieldValue(overlay, field.key);
+            var idx = field.values.indexOf(cur);
+            if (idx < 0) idx = 0;
+            idx = (idx + dir + field.values.length) % field.values.length;
+            setEditFieldValue(overlay, field.key, field.values[idx]);
+        } else {
+            // Numeric field
+            var cur = getEditFieldValue(overlay, field.key);
+            var step = field.step || 0.05;
+            var newVal = Math.round((cur + dir * step) * 100) / 100;
+            newVal = clamp(newVal, field.min, field.max);
+            setEditFieldValue(overlay, field.key, newVal);
+        }
+    }
+
+    function drawEditOverlayPreview() {
+        // Only draw a standalone preview if there are no existing shot lines
+        if (PT.shotLayer.children.length > 0) return;
+        if (!PT.editMode || !PT.cueOverlay || !balls[0]) return;
+
+        PT.shotLayer.activate();
+
+        var cueTx = balls[0].tableX;
+        var cueTy = balls[0].tableY;
+
+        // Find first object ball for aim direction, or default to right
+        var nx = 1, ny = 0;
+        var nums = Object.keys(balls);
+        var bestDist = Infinity;
+        for (var i = 0; i < nums.length; i++) {
+            var b = balls[+nums[i]];
+            if (b.num === 0) continue;
+            var dx = b.tableX - cueTx;
+            var dy = b.tableY - cueTy;
+            var d = Math.sqrt(dx * dx + dy * dy);
+            if (d > 0.1 && d < bestDist) {
+                bestDist = d;
+                nx = dx / d;
+                ny = dy / d;
+            }
+        }
+
+        // Draw a faint aim line for context
+        var fromPt = T(cueTx, cueTy);
+        var toPt = T(cueTx + nx * 30, cueTy + ny * 30);
+        new paper.Path.Line({
+            from: fromPt,
+            to: toPt,
+            strokeColor: 'rgba(255,255,255,0.15)',
+            strokeWidth: S(0.08),
+            dashArray: [S(0.4), S(0.4)]
+        });
+
+        drawCueOverlay(cueTx, cueTy, nx, ny, PT.cueOverlay);
+    }
+
+    function drawEditPanel() {
+        PT.uiLayer.activate();
+        // Remove any existing edit panel
+        if (PT._editPanelGroup) { PT._editPanelGroup.remove(); PT._editPanelGroup = null; }
+        if (!PT.editMode || !PT.cueOverlay) return;
+
+        var overlay = PT.cueOverlay;
+        var fb = PT.getFeltBounds();
+        var fw = fb.right - fb.left;
+        var fh = fb.bottom - fb.top;
+
+        var panelW = fw * 0.28;
+        var panelH = fh * 0.35;
+        var panelX = fb.left + fw * 0.03;
+        var panelY = fb.bottom - panelH - fh * 0.03;
+
+        var group = new paper.Group();
+
+        // Background
+        group.addChild(new paper.Path.Rectangle({
+            from: new paper.Point(panelX, panelY),
+            to: new paper.Point(panelX + panelW, panelY + panelH),
+            radius: S(0.3),
+            fillColor: 'rgba(0,0,0,0.85)',
+            strokeColor: 'rgba(0,229,255,0.6)',
+            strokeWidth: 2
+        }));
+
+        // Title
+        var titleY = panelY + panelH * 0.12;
+        group.addChild(new paper.PointText({
+            point: new paper.Point(panelX + panelW / 2, titleY),
+            content: 'CUE OVERLAY EDIT',
+            fillColor: 'rgba(0,229,255,0.9)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: Math.max(10, panelW * 0.08),
+            fontWeight: 'bold',
+            justification: 'center'
+        }));
+
+        // Fields
+        var fields = PT.editFields;
+        var fieldStartY = titleY + panelH * 0.12;
+        var fieldH = (panelH * 0.55) / fields.length;
+        var labelX = panelX + panelW * 0.08;
+        var valueX = panelX + panelW * 0.92;
+
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            var y = fieldStartY + i * fieldH + fieldH * 0.5;
+            var selected = (i === PT.editCursor);
+            var val = getEditFieldValue(overlay, f.key);
+            var valStr = f.values ? val.toUpperCase() : val.toFixed(2);
+
+            if (selected) {
+                group.addChild(new paper.Path.Rectangle({
+                    from: new paper.Point(panelX + panelW * 0.03, y - fieldH * 0.42),
+                    to: new paper.Point(panelX + panelW * 0.97, y + fieldH * 0.42),
+                    radius: S(0.15),
+                    fillColor: 'rgba(0,229,255,0.15)',
+                    strokeColor: 'rgba(0,229,255,0.4)',
+                    strokeWidth: 1
+                }));
+            }
+
+            // Cursor indicator
+            group.addChild(new paper.PointText({
+                point: new paper.Point(labelX - panelW * 0.03, y + Math.max(4, panelW * 0.03)),
+                content: selected ? '▸' : ' ',
+                fillColor: 'rgba(0,229,255,0.9)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: Math.max(10, panelW * 0.07),
+                justification: 'left'
+            }));
+
+            // Label
+            group.addChild(new paper.PointText({
+                point: new paper.Point(labelX, y + Math.max(4, panelW * 0.03)),
+                content: f.label,
+                fillColor: selected ? '#fff' : 'rgba(255,255,255,0.6)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: Math.max(9, panelW * 0.065),
+                justification: 'left'
+            }));
+
+            // Value
+            group.addChild(new paper.PointText({
+                point: new paper.Point(valueX, y + Math.max(4, panelW * 0.03)),
+                content: valStr,
+                fillColor: selected ? '#0ef' : 'rgba(200,200,200,0.8)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: Math.max(9, panelW * 0.065),
+                fontWeight: 'bold',
+                justification: 'right'
+            }));
+        }
+
+        // Hint line
+        group.addChild(new paper.PointText({
+            point: new paper.Point(panelX + panelW / 2, panelY + panelH * 0.93),
+            content: '↑↓ select  ←→ adjust  S save  N new  E done',
+            fillColor: 'rgba(255,255,255,0.35)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: Math.max(7, panelW * 0.05),
+            justification: 'center'
+        }));
+
+        PT._editPanelGroup = group;
+    }
+
     // ── Exports ──
     PT.clearShotLines = clearShotLines;
     PT.hitBall = hitBall;
@@ -399,4 +589,7 @@
     PT.findTargetBall = findTargetBall;
     PT.findBestPocket = findBestPocket;
     PT.drawShotLines = drawShotLines;
+    PT.drawEditPanel = drawEditPanel;
+    PT.drawEditOverlayPreview = drawEditOverlayPreview;
+    PT.editAdjust = editAdjust;
 })();

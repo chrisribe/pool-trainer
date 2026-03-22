@@ -32,6 +32,58 @@ var server = http.createServer(function (req, res) {
         return;
     }
 
+    // API: Save drill (PUT = update existing, POST = add new)
+    var drillMatch = req.url.match(/^\/api\/drills\/([a-z0-9-]+)(?:\/(\d+))?$/);
+    if (drillMatch && (req.method === 'PUT' || req.method === 'POST')) {
+        var catId = drillMatch[1];
+        var drillIdx = drillMatch[2] !== undefined ? parseInt(drillMatch[2], 10) : null;
+        var drillFile = path.join(__dirname, 'drills', catId + '.json');
+
+        // Validate category file exists
+        if (!fs.existsSync(drillFile)) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Category not found' }));
+            return;
+        }
+
+        var body = '';
+        req.on('data', function (chunk) {
+            if (body.length > 100000) { req.destroy(); return; } // 100KB limit
+            body += chunk;
+        });
+        req.on('end', function () {
+            try {
+                var drillData = JSON.parse(body);
+                var raw = fs.readFileSync(drillFile, 'utf8').replace(/^\uFEFF/, '');
+                var existing = JSON.parse(raw);
+
+                if (req.method === 'PUT' && drillIdx !== null) {
+                    // Update existing drill at index
+                    if (drillIdx < 0 || drillIdx >= existing.length) {
+                        res.writeHead(400, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'Invalid drill index' }));
+                        return;
+                    }
+                    existing[drillIdx] = drillData;
+                } else {
+                    // Append new drill
+                    existing.push(drillData);
+                    drillIdx = existing.length - 1;
+                }
+
+                fs.writeFileSync(drillFile, JSON.stringify(existing, null, 2) + '\n');
+                console.log((req.method === 'PUT' ? 'Updated' : 'Added') + ' drill ' + catId + '[' + drillIdx + ']: ' + drillData.name);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, index: drillIdx }));
+            } catch (e) {
+                console.error('Drill save error:', e.message);
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: e.message }));
+            }
+        });
+        return;
+    }
+
     // Remote control page
     var rawUrl = req.url.split('?')[0];
     if (rawUrl === '/remote') {
