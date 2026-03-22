@@ -61,7 +61,14 @@ The app renders a top-down view of the table at the projector's native resolutio
 pool-trainer/
 ├── index.html              # Single page app (tablet-optimized)
 ├── styles.css              # Black background, bright elements, large touch targets
-├── app.js                  # Main app (like scene-creator.js)
+├── app-core.js             # Core init + shared state
+├── shots.js                # Aim/ghost ball logic
+├── balls.js                # Ball creation + racks
+├── drills.js               # Drill library + menus
+├── input.js                # Pointer + keyboard input
+├── remote.js               # QR + remote control
+├── calibration.js          # Homography + calibration UI
+├── init.js                 # Startup sequence
 ├── lib/
 │   ├── paper.min.js        # Reuse directly
 │   ├── FileSaver.min.js    # Export drills as SVG/JSON
