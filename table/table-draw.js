@@ -10,6 +10,7 @@
     var colors = cfg.colors;
     var T = PT.T;
     var S = PT.S;
+    var canvas = document.getElementById('table-canvas');
 
     function drawTable() {
         PT.tableLayer.removeChildren();
@@ -215,7 +216,7 @@
 
     // ── Resize handling ──
     var lastResizeW = 0, lastResizeH = 0;
-    paper.view.onResize = function () {
+    function fullRedraw() {
         var w = paper.view.size.width, h = paper.view.size.height;
         if (w === lastResizeW && h === lastResizeH) return;
         lastResizeW = w; lastResizeH = h;
@@ -228,7 +229,21 @@
         if (PT.appMode === 'menu') PT.enterMenu();
         else if (PT.appMode === 'drillList') PT.showDrillList(PT.drillListCatId, PT.drillListPage);
         else if (PT.appMode === 'drill' && PT.activeDrills) PT.showDrillHUD();
-    };
+    }
+
+    paper.view.onResize = function () { fullRedraw(); };
+
+    // Fullscreen transitions settle after the resize event — force a
+    // second redraw once the browser has finished reflowing.
+    document.addEventListener('fullscreenchange', function () {
+        setTimeout(function () {
+            paper.view.viewSize = new paper.Size(
+                canvas.clientWidth, canvas.clientHeight
+            );
+            lastResizeW = 0; lastResizeH = 0;   // force redraw
+            fullRedraw();
+        }, 150);
+    });
 
     // ── Exports ──
     PT.drawTable = drawTable;

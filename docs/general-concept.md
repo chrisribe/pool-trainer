@@ -237,7 +237,7 @@ Phone browser ←→ WebSocket ←→ server.js ←→ Main browser (projector)
 
 **Commands:** `next`, `prev`, `menu`, `rack9`, `rack8`, `clear`
 
-**Status:** Implemented (server.js + remote.html + QR pairing)
+**Status:** Implemented (server.js + remote.html + QR pairing + session isolation per table)
 
 **Complexity:** Low — ~50 lines server (ws/socket.io), ~30 lines main app listener, ~80 lines remote page. No auth needed on local network.
 
@@ -269,6 +269,6 @@ The core is much simpler than the SVG editor because:
 6. **Projection mode + Calibration** — P=toggle projection overlay, K=4-corner homography calibration ✅
 7. **Touch UX polish** — selection ring, trash icon, long-press actions ✅
 8. **Mobile remote** — WebSocket phone controller (next/prev/menu via big touch buttons, QR code pairing) ✅
-9. **Drill editor mode** — create/edit drills, place cue target rings, save to JSON
-10. **Polish** — English indicators, speed markers, difficulty tags
+9. **Drill editor mode** — create/edit drills, place cue target rings, save to JSON ✅
+10. **Polish** — English indicators, speed markers, difficulty tags ✅
 

@@ -94,7 +94,7 @@ window.PT = (function () {
 
     function T(x, y) {
         var pt = T_default(x, y);
-        if (calibrationMatrix) {
+        if (projectionMode && calibrationMatrix) {
             var mapped = PT.applyHomography(calibrationMatrix, pt.x, pt.y);
             return new paper.Point(mapped.x, mapped.y);
         }
@@ -134,7 +134,7 @@ window.PT = (function () {
     }
 
     function invT(canvasPoint) {
-        if (calibrationInverse) {
+        if (projectionMode && calibrationInverse) {
             var unmapped = PT.applyHomography(calibrationInverse, canvasPoint.x, canvasPoint.y);
             return invT_default({ x: unmapped.x, y: unmapped.y });
         }
