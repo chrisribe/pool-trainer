@@ -1,28 +1,48 @@
-﻿[
+[
   {
     "name": "Center Pocket Straight Shot",
     "description": "Straight shot into the side pocket. Focus on center-ball hit and follow-through.",
     "difficulty": 1,
+    "balls": [
+      {
+        "num": 0,
+        "x": 30,
+        "y": 44
+      },
+      {
+        "num": 1,
+        "x": 12,
+        "y": 44
+      }
+    ],
     "cueOverlay": {
       "show": true,
-      "side": "right",
-      "size": 1.8,
-      "offset": 2.2,
-      "tip": { "x": 0.25, "y": -0.2 },
-      "power": 0.6
+      "tip": {
+        "x": 0,
+        "y": 0
+      },
+      "power": 0.1
     },
-    "balls": [
-      { "num": 0, "x": 30, "y": 44 },
-      { "num": 1, "x": 12, "y": 44 }
-    ]
+    "aimLine": {
+      "x": 13.11,
+      "y": 42.76
+    }
   },
   {
     "name": "Short Straight Shot",
     "description": "Short straight shot into the corner pocket. Build confidence with easy pots.",
     "difficulty": 1,
     "balls": [
-      { "num": 0, "x": 22, "y": 22 },
-      { "num": 1, "x": 22, "y": 10 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 22
+      },
+      {
+        "num": 1,
+        "x": 22,
+        "y": 10
+      }
     ]
   },
   {
@@ -30,8 +50,16 @@
     "description": "Full-length straight shot into the corner. Keep your cue as level as possible.",
     "difficulty": 2,
     "balls": [
-      { "num": 0, "x": 22, "y": 66 },
-      { "num": 1, "x": 22, "y": 15 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 66
+      },
+      {
+        "num": 1,
+        "x": 22,
+        "y": 15
+      }
     ]
   },
   {
@@ -39,8 +67,16 @@
     "description": "Straight shot slightly off-center into the corner. Aim through the ball, not at the pocket.",
     "difficulty": 2,
     "balls": [
-      { "num": 0, "x": 14, "y": 66 },
-      { "num": 1, "x": 14, "y": 15 }
+      {
+        "num": 0,
+        "x": 14,
+        "y": 66
+      },
+      {
+        "num": 1,
+        "x": 14,
+        "y": 15
+      }
     ]
   },
   {
@@ -48,8 +84,16 @@
     "description": "First ball - short straight into the corner. Smooth stroke.",
     "difficulty": 3,
     "balls": [
-      { "num": 0, "x": 22, "y": 78 },
-      { "num": 1, "x": 22, "y": 63 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 78
+      },
+      {
+        "num": 1,
+        "x": 22,
+        "y": 63
+      }
     ]
   },
   {
@@ -57,8 +101,16 @@
     "description": "Second ball - leave the cue ball rolling forward.",
     "difficulty": 3,
     "balls": [
-      { "num": 0, "x": 22, "y": 63 },
-      { "num": 2, "x": 22, "y": 48 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 63
+      },
+      {
+        "num": 2,
+        "x": 22,
+        "y": 48
+      }
     ]
   },
   {
@@ -66,8 +118,16 @@
     "description": "Third ball - staying on the center line.",
     "difficulty": 3,
     "balls": [
-      { "num": 0, "x": 22, "y": 48 },
-      { "num": 3, "x": 22, "y": 33 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 48
+      },
+      {
+        "num": 3,
+        "x": 22,
+        "y": 33
+      }
     ]
   },
   {
@@ -75,8 +135,16 @@
     "description": "Fourth ball - keep it straight and controlled.",
     "difficulty": 3,
     "balls": [
-      { "num": 0, "x": 22, "y": 33 },
-      { "num": 4, "x": 22, "y": 18 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 33
+      },
+      {
+        "num": 4,
+        "x": 22,
+        "y": 18
+      }
     ]
   },
   {
@@ -84,8 +152,16 @@
     "description": "Final ball - pot it clean into the corner.",
     "difficulty": 3,
     "balls": [
-      { "num": 0, "x": 22, "y": 18 },
-      { "num": 5, "x": 22, "y": 6 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 18
+      },
+      {
+        "num": 5,
+        "x": 22,
+        "y": 6
+      }
     ]
   }
 ]

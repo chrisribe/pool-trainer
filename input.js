@@ -56,8 +56,10 @@
                     PT.activeCategory = null;
                     PT.clearBalls();
                     PT.clearShotLines();
-                    PT.uiLayer.removeChildren();
                     PT.rack9Ball();
+                    PT.showDrillHUD();
+                } else if (uiHit.action === 'newCustomDrill') {
+                    if (PT.startCustomDrill) PT.startCustomDrill();
                 } else if (uiHit.action === 'resume') {
                     PT.startDrill(PT.activeDrillIdx);
                 }
@@ -72,6 +74,24 @@
         }
 
         if (PT.clearDeleteIcon) PT.clearDeleteIcon();
+
+        // In drill mode — dragging cue target, balls, or aiming
+        if (PT.appMode === 'drill' && PT.hitCueTarget) {
+            var targetHit = PT.hitCueTarget(event.point);
+            if (targetHit && PT.cueTarget) {
+                PT.deselectBall();
+                PT.dragTarget = { type: 'cueTarget' };
+                var rail = PT.cfg.railWidth;
+                var centerTarget = PT.T(rail + PT.cueTarget.x, rail + PT.cueTarget.y);
+                PT.dragOffset = new paper.Point(
+                    event.point.x - centerTarget.x,
+                    event.point.y - centerTarget.y
+                );
+                PT.clearShotLines();
+                PT.aimState = null;
+                return;
+            }
+        }
 
         // In drill mode — dragging balls or aiming
         var b = PT.hitBall(event.point);
@@ -130,6 +150,17 @@
         }
 
         if (!PT.dragTarget) return;
+        if (PT.dragTarget.type === 'cueTarget') {
+            var adjustedTarget = new paper.Point(
+                event.point.x - PT.dragOffset.x,
+                event.point.y - PT.dragOffset.y
+            );
+            var tablePosTarget = PT.invT(adjustedTarget);
+            var clampedTarget = PT.clampToPlayingSurface(tablePosTarget.x, tablePosTarget.y);
+            var railTarget = PT.cfg.railWidth;
+            if (PT.setCueTarget) PT.setCueTarget(clampedTarget.x - railTarget, clampedTarget.y - railTarget);
+            return;
+        }
         var adjusted = new paper.Point(
             event.point.x - PT.dragOffset.x,
             event.point.y - PT.dragOffset.y
@@ -184,15 +215,33 @@
         if (PT.appMode === 'drill') {
             // Edit mode: arrow keys navigate, E exits
             if (PT.editMode) {
+                // New drill sub-mode
+                if (PT.newDrillMode) {
+                    if (e.key === 'ArrowUp')   { e.preventDefault(); PT.newDrillCursor = Math.max(0, PT.newDrillCursor - 1); PT.drawNewDrillPanel(); }
+                    if (e.key === 'ArrowDown') { e.preventDefault(); PT.newDrillCursor = Math.min(PT.newDrillFields.length - 1, PT.newDrillCursor + 1); PT.drawNewDrillPanel(); }
+                    if (e.key === 'ArrowLeft')  { e.preventDefault(); PT.newDrillAdjust(-1); PT.drawNewDrillPanel(); }
+                    if (e.key === 'ArrowRight') { e.preventDefault(); PT.newDrillAdjust(1); PT.drawNewDrillPanel(); }
+                    if (e.key === 's' || e.key === 'S') { PT.confirmNewDrill(); }
+                    if (e.key === 'Escape') { PT.cancelNewDrill(); }
+                    return;
+                }
                 if (e.key === 'ArrowUp')   { e.preventDefault(); PT.editCursor = Math.max(0, PT.editCursor - 1); PT.refreshEditView(); }
                 if (e.key === 'ArrowDown') { e.preventDefault(); PT.editCursor = Math.min(PT.editFields.length - 1, PT.editCursor + 1); PT.refreshEditView(); }
                 if (e.key === 'ArrowLeft')  { e.preventDefault(); PT.editAdjust(-1); PT.refreshEditView(); }
                 if (e.key === 'ArrowRight') { e.preventDefault(); PT.editAdjust(1); PT.refreshEditView(); }
                 if (e.key === 'e' || e.key === 'E' || e.key === 'Escape') { PT.toggleEditMode(); }
-                if (e.key === 's' || e.key === 'S') { PT.saveDrill(PT.showSaveFeedback); }
-                if (e.key === 'n' || e.key === 'N') {
-                    var name = prompt('New drill name:');
-                    if (name) PT.saveAsNewDrill(name, PT.showSaveFeedback);
+                if (e.key === 's' || e.key === 'S') {
+                    if (PT.activeDrills && PT.activeDrills.length) PT.saveDrill(PT.showSaveFeedback);
+                }
+                if (e.key === 'n' || e.key === 'N') { PT.enterNewDrillMode(); }
+                // Number keys: drop/select ball in edit mode (Shift+1-6 => 10-15)
+                if (e.code && e.code.indexOf('Digit') === 0) {
+                    var digit = parseInt(e.code.slice(5), 10);
+                    if (!isNaN(digit)) {
+                        var ballNum = digit;
+                        if (e.shiftKey && digit >= 1 && digit <= 6) ballNum = 9 + digit;
+                        PT.dropBall(ballNum);
+                    }
                 }
                 return;
             }
@@ -200,10 +249,15 @@
             if (e.key === 'ArrowLeft') PT.prevDrill();
             if (e.key === 'm' || e.key === 'M' || e.key === 'Escape') PT.menuBack();
             if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); PT.deleteSelectedBall(); }
-            if (e.key === '9') { PT.activeDrills = null; PT.rack9Ball(); PT.uiLayer.removeChildren(); }
-            if (e.key === '8') { PT.activeDrills = null; PT.rack8Ball(); PT.uiLayer.removeChildren(); }
+            if (e.key === '9') { PT.activeDrills = null; PT.rack9Ball(); PT.showDrillHUD(); }
+            if (e.key === '8') { PT.activeDrills = null; PT.rack8Ball(); PT.showDrillHUD(); }
             if (e.key === 'c' || e.key === 'C') PT.clearBalls();
             if (e.key === 'e' || e.key === 'E') PT.toggleEditMode();
+            if (e.key === 'n' || e.key === 'N') {
+                // Enter edit mode then immediately start new drill flow
+                if (!PT.editMode) PT.toggleEditMode();
+                PT.enterNewDrillMode();
+            }
         } else if (PT.appMode === 'menu' || PT.appMode === 'drillList') {
             if (e.key === 'ArrowUp') { e.preventDefault(); PT.menuNav('up'); }
             if (e.key === 'ArrowDown') { e.preventDefault(); PT.menuNav('down'); }

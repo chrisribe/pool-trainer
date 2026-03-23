@@ -20,6 +20,7 @@
     var drillListCatId = null;
     var menuCursor = 0;
     var menuItemCount = 0;
+    var cueTargetGroup = null;
 
     // ── Serialize / Load ──
 
@@ -47,11 +48,89 @@
                 power: (typeof PT.cueOverlay.power === 'number') ? PT.cueOverlay.power : 0.5
             };
         }
+        if (PT.cueTarget) {
+            drill.cueTarget = { x: PT.cueTarget.x, y: PT.cueTarget.y };
+        }
         return drill;
+    }
+
+    function drawCueTarget() {
+        if (cueTargetGroup) {
+            cueTargetGroup.remove();
+            cueTargetGroup = null;
+        }
+        PT.targetLayer.removeChildren();
+        if (!PT.cueTarget || PT.appMode !== 'drill') return;
+
+        var rail = cfg.railWidth;
+        var tx = rail + PT.cueTarget.x;
+        var ty = rail + PT.cueTarget.y;
+
+        PT.targetLayer.activate();
+
+        cueTargetGroup = new paper.Group();
+        cueTargetGroup.addChild(new paper.Path.Circle({
+            center: T(tx, ty),
+            radius: S(2.5),
+            strokeColor: 'rgba(0,229,255,0.25)',
+            strokeWidth: S(0.08),
+            fillColor: null
+        }));
+        cueTargetGroup.addChild(new paper.Path.Circle({
+            center: T(tx, ty),
+            radius: S(1.5),
+            strokeColor: 'rgba(0,229,255,0.35)',
+            strokeWidth: S(0.08),
+            fillColor: null
+        }));
+        cueTargetGroup.addChild(new paper.Path.Circle({
+            center: T(tx, ty),
+            radius: S(0.6),
+            strokeColor: 'rgba(0,229,255,0.5)',
+            strokeWidth: S(0.1),
+            fillColor: 'rgba(0,229,255,0.12)'
+        }));
+        var chSize = S(3.2);
+        var cp = T(tx, ty);
+        cueTargetGroup.addChild(new paper.Path.Line({
+            from: new paper.Point(cp.x - chSize, cp.y),
+            to: new paper.Point(cp.x + chSize, cp.y),
+            strokeColor: 'rgba(0,229,255,0.2)',
+            strokeWidth: S(0.06)
+        }));
+        cueTargetGroup.addChild(new paper.Path.Line({
+            from: new paper.Point(cp.x, cp.y - chSize),
+            to: new paper.Point(cp.x, cp.y + chSize),
+            strokeColor: 'rgba(0,229,255,0.2)',
+            strokeWidth: S(0.06)
+        }));
+    }
+
+    function setCueTarget(x, y) {
+        PT.cueTarget = { x: x, y: y };
+        drawCueTarget();
+    }
+
+    function hideCueTarget() {
+        if (cueTargetGroup) {
+            cueTargetGroup.remove();
+            cueTargetGroup = null;
+        }
+        PT.targetLayer.removeChildren();
+    }
+
+    function hitCueTarget(canvasPoint) {
+        if (!PT.cueTarget) return null;
+        var rail = cfg.railWidth;
+        var center = T(rail + PT.cueTarget.x, rail + PT.cueTarget.y);
+        var dist = canvasPoint.getDistance(center);
+        if (dist <= S(3.2)) return { type: 'cueTarget' };
+        return null;
     }
 
     function loadDrill(drill) {
         PT.cueOverlay = drill.cueOverlay || null;
+        PT.cueTarget = drill.cueTarget ? { x: drill.cueTarget.x, y: drill.cueTarget.y } : null;
         PT.clearBalls();
         PT.clearShotLines();
         var rail = cfg.railWidth;
@@ -91,48 +170,7 @@
             }
         }
 
-        // Cue ball target
-        if (drill.cueTarget) {
-            var tx = rail + drill.cueTarget.x;
-            var ty = rail + drill.cueTarget.y;
-            PT.shotLayer.activate();
-
-            new paper.Path.Circle({
-                center: T(tx, ty),
-                radius: S(2.5),
-                strokeColor: 'rgba(0,229,255,0.25)',
-                strokeWidth: S(0.08),
-                fillColor: null
-            });
-            new paper.Path.Circle({
-                center: T(tx, ty),
-                radius: S(1.5),
-                strokeColor: 'rgba(0,229,255,0.35)',
-                strokeWidth: S(0.08),
-                fillColor: null
-            });
-            new paper.Path.Circle({
-                center: T(tx, ty),
-                radius: S(0.6),
-                strokeColor: 'rgba(0,229,255,0.5)',
-                strokeWidth: S(0.1),
-                fillColor: 'rgba(0,229,255,0.12)'
-            });
-            var chSize = S(3.2);
-            var cp = T(tx, ty);
-            new paper.Path.Line({
-                from: new paper.Point(cp.x - chSize, cp.y),
-                to: new paper.Point(cp.x + chSize, cp.y),
-                strokeColor: 'rgba(0,229,255,0.2)',
-                strokeWidth: S(0.06)
-            });
-            new paper.Path.Line({
-                from: new paper.Point(cp.x, cp.y - chSize),
-                to: new paper.Point(cp.x, cp.y + chSize),
-                strokeColor: 'rgba(0,229,255,0.2)',
-                strokeWidth: S(0.06)
-            });
-        }
+        drawCueTarget();
     }
 
     function exportDrill() {
@@ -160,7 +198,8 @@
             existing.difficulty
         );
         // Preserve fields we don't edit
-        if (existing.cueTarget) drill.cueTarget = existing.cueTarget;
+        if (PT.cueTarget) drill.cueTarget = { x: PT.cueTarget.x, y: PT.cueTarget.y };
+        else if (existing.cueTarget) drill.cueTarget = existing.cueTarget;
         // Capture current aim if available, otherwise keep original
         if (PT.lastAimPoint) {
             var rail = cfg.railWidth;
@@ -188,28 +227,29 @@
         xhr.send(JSON.stringify(drill));
     }
 
-    // Save as new drill appended to current category
-    function saveAsNewDrill(name, callback) {
-        if (!drillListCatId) {
-            if (callback) callback(false, 'No active category');
-            return;
-        }
-        var drill = serializeDrill(name || 'New Drill', '', 1);
+    // Save as new drill appended to a category
+    function saveAsNewDrill(name, catId, difficulty, callback) {
+        // Support old signature: saveAsNewDrill(name, callback)
+        if (typeof catId === 'function') { callback = catId; catId = null; difficulty = 1; }
+        if (typeof difficulty === 'function') { callback = difficulty; difficulty = 1; }
+        catId = 'custom';
+        var drill = serializeDrill(name || 'New Drill', '', difficulty || 1);
 
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/api/drills/' + drillListCatId, true);
+        xhr.open('POST', '/api/drills/' + catId, true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.onload = function () {
             var ok = xhr.status === 200;
             if (ok) {
                 try {
                     var resp = JSON.parse(xhr.responseText);
-                    // Add to local cache and navigate to it
-                    if (activeDrills) {
+                    // Add to local cache
+                    if (drillCache[catId]) drillCache[catId].push(drill);
+                    // If we're in the same category, update active drills
+                    if (activeDrills && drillListCatId === catId) {
                         activeDrills.push(drill);
                         activeDrillIdx = activeDrills.length - 1;
                     }
-                    if (drillCache[drillListCatId]) drillCache[drillListCatId].push(drill);
                 } catch (e) {}
             }
             if (callback) callback(ok, ok ? 'Drill added' : 'Save failed');
@@ -257,6 +297,7 @@
         PT.appMode = 'menu';
         PT.clearBalls();
         PT.clearShotLines();
+        hideCueTarget();
         PT.uiLayer.removeChildren();
         PT.uiLayer.activate();
 
@@ -441,6 +482,7 @@
         fetchDrills(cat, function (drills) {
             PT.qrLayer.visible = false;
             PT.qrLayer.removeChildren();
+            hideCueTarget();
             activeCategory = cat.name;
             activeDrills = drills;
             activeDrillIdx = 0;
@@ -474,40 +516,35 @@
             var available = listBottom - listTop;
             var itemH = btnH + gap;
             var perPage = Math.max(1, Math.floor(available / itemH));
-            var totalPages = Math.ceil(drills.length / perPage);
+            var totalPages = Math.max(1, Math.ceil(drills.length / perPage));
             var pg = Math.min(drillListPage, totalPages - 1);
             var startIdx = pg * perPage;
             var endIdx = Math.min(startIdx + perPage, drills.length);
 
             var pageItems = endIdx - startIdx;
+            var isEmptyCustom = (drills.length === 0 && cat.id === 'custom');
+            if (isEmptyCustom) pageItems = 1;
             menuItemCount = pageItems + 1;
             if (menuCursor >= menuItemCount) menuCursor = menuItemCount - 1;
             if (menuCursor < 0) menuCursor = 0;
-
-            for (var j = startIdx; j < endIdx; j++) {
-                var drill = drills[j];
-                var row = j - startIdx;
-                var y = listTop + row * itemH;
-                var isSelected = (row === menuCursor);
-
-                var stars = '';
-                for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '\u2605' : '\u2606';
-
-                var btn = new paper.Path.Rectangle({
-                    from: new paper.Point(cx - btnW / 2, y),
-                    to: new paper.Point(cx + btnW / 2, y + btnH),
+            if (isEmptyCustom) {
+                var emptyY = listTop;
+                var emptySelected = (menuCursor === 0);
+                var emptyBtn = new paper.Path.Rectangle({
+                    from: new paper.Point(cx - btnW / 2, emptyY),
+                    to: new paper.Point(cx + btnW / 2, emptyY + btnH),
                     radius: 6,
-                    fillColor: isSelected ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)',
-                    strokeColor: isSelected ? '#ffffff' : 'rgba(255,255,255,0.2)',
-                    strokeWidth: isSelected ? 2 : 1
+                    fillColor: emptySelected ? 'rgba(0,229,255,0.16)' : 'rgba(0,229,255,0.08)',
+                    strokeColor: emptySelected ? '#00e5ff' : 'rgba(0,229,255,0.4)',
+                    strokeWidth: emptySelected ? 2 : 1
                 });
-                btn.data = { action: 'loadDrill', drillIdx: j };
+                emptyBtn.data = { action: 'newCustomDrill' };
 
-                if (isSelected) {
+                if (emptySelected) {
                     new paper.PointText({
-                        point: new paper.Point(cx - btnW / 2 - btnH * 0.35, y + btnH * 0.65),
+                        point: new paper.Point(cx - btnW / 2 - btnH * 0.35, emptyY + btnH * 0.65),
                         content: '\u25b6',
-                        fillColor: '#ffffff',
+                        fillColor: '#00e5ff',
                         fontFamily: 'Arial, sans-serif',
                         fontSize: btnH * 0.36,
                         justification: 'center'
@@ -515,22 +552,72 @@
                 }
 
                 new paper.PointText({
-                    point: new paper.Point(cx - btnW * 0.42, y + btnH * 0.65),
-                    content: drill.name,
-                    fillColor: '#ffffff',
+                    point: new paper.Point(cx, emptyY + btnH * 0.65),
+                    content: 'Create New Drill',
+                    fillColor: '#00e5ff',
                     fontFamily: 'Arial, sans-serif',
+                    fontWeight: 'bold',
                     fontSize: btnH * 0.36,
-                    justification: 'left'
-                }).data = { action: 'loadDrill', drillIdx: j };
+                    justification: 'center'
+                }).data = { action: 'newCustomDrill' };
 
                 new paper.PointText({
-                    point: new paper.Point(cx + btnW * 0.42, y + btnH * 0.65),
-                    content: stars,
-                    fillColor: '#ffee00',
+                    point: new paper.Point(cx, emptyY + btnH * 1.7),
+                    content: 'No custom drills yet',
+                    fillColor: 'rgba(255,255,255,0.4)',
                     fontFamily: 'Arial, sans-serif',
-                    fontSize: btnH * 0.3,
-                    justification: 'right'
-                }).data = { action: 'loadDrill', drillIdx: j };
+                    fontSize: btnH * 0.28,
+                    justification: 'center'
+                });
+            } else {
+                for (var j = startIdx; j < endIdx; j++) {
+                    var drill = drills[j];
+                    var row = j - startIdx;
+                    var y = listTop + row * itemH;
+                    var isSelected = (row === menuCursor);
+
+                    var stars = '';
+                    for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '\u2605' : '\u2606';
+
+                    var btn = new paper.Path.Rectangle({
+                        from: new paper.Point(cx - btnW / 2, y),
+                        to: new paper.Point(cx + btnW / 2, y + btnH),
+                        radius: 6,
+                        fillColor: isSelected ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)',
+                        strokeColor: isSelected ? '#ffffff' : 'rgba(255,255,255,0.2)',
+                        strokeWidth: isSelected ? 2 : 1
+                    });
+                    btn.data = { action: 'loadDrill', drillIdx: j };
+
+                    if (isSelected) {
+                        new paper.PointText({
+                            point: new paper.Point(cx - btnW / 2 - btnH * 0.35, y + btnH * 0.65),
+                            content: '\u25b6',
+                            fillColor: '#ffffff',
+                            fontFamily: 'Arial, sans-serif',
+                            fontSize: btnH * 0.36,
+                            justification: 'center'
+                        });
+                    }
+
+                    new paper.PointText({
+                        point: new paper.Point(cx - btnW * 0.42, y + btnH * 0.65),
+                        content: drill.name,
+                        fillColor: '#ffffff',
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: btnH * 0.36,
+                        justification: 'left'
+                    }).data = { action: 'loadDrill', drillIdx: j };
+
+                    new paper.PointText({
+                        point: new paper.Point(cx + btnW * 0.42, y + btnH * 0.65),
+                        content: stars,
+                        fillColor: '#ffee00',
+                        fontFamily: 'Arial, sans-serif',
+                        fontSize: btnH * 0.3,
+                        justification: 'right'
+                    }).data = { action: 'loadDrill', drillIdx: j };
+                }
             }
 
             // Bottom row: [Back]  [◀ page ▶]
@@ -635,12 +722,9 @@
         PT.uiLayer.removeChildren();
         PT.uiLayer.activate();
 
-        if (!activeDrills || !activeDrills[activeDrillIdx]) return;
-        var drill = activeDrills[activeDrillIdx];
         var rail = cfg.railWidth;
         var pw = cfg.playWidth;
         var ph = cfg.playHeight;
-
         var c1 = T(rail, rail);
         var c2 = T(rail + pw, rail + ph);
         var sL = Math.min(c1.x, c2.x);
@@ -650,7 +734,20 @@
         var margin = S(2);
         var fs = S(1.4);
 
-        new paper.PointText({
+        if (!activeDrills || !activeDrills[activeDrillIdx]) {
+            // Free play — show minimal hint
+            new paper.PointText({
+                point: new paper.Point((sL + sR) / 2, sB - margin),
+                content: 'N Save as Drill    M Menu    E Edit    F Fullscreen    P Projection    K Calibrate    Del Remove Ball    Tap Trash',
+                fillColor: 'rgba(255,255,255,0.2)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: fs * 0.55,
+                justification: 'center'
+            });
+            return;
+        }
+
+        var drill = activeDrills[activeDrillIdx];        new paper.PointText({
             point: new paper.Point(sL + margin, sT + margin + fs),
             content: drill.name,
             fillColor: '#ffffff',
@@ -660,9 +757,22 @@
             justification: 'left'
         });
 
+        var infoY = sT + margin + fs * 2.0;
+        if (activeCategory) {
+            new paper.PointText({
+                point: new paper.Point(sL + margin, infoY),
+                content: 'Category: ' + activeCategory,
+                fillColor: 'rgba(255,255,255,0.35)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: fs * 0.6,
+                justification: 'left'
+            });
+            infoY += fs * 0.9;
+        }
+
         if (drill.description) {
             new paper.PointText({
-                point: new paper.Point(sL + margin, sT + margin + fs * 2.8),
+                point: new paper.Point(sL + margin, infoY + fs * 0.9),
                 content: drill.description,
                 fillColor: 'rgba(255,255,255,0.4)',
                 fontFamily: 'Arial, sans-serif',
@@ -705,7 +815,7 @@
 
         new paper.PointText({
             point: new paper.Point((sL + sR) / 2, sB - margin),
-            content: '\u2192 Next    \u2190 Prev    M Menu    Del Remove Ball    Tap Trash',
+            content: '\u2192 Next    \u2190 Prev    M Menu    E Edit    N New    F Fullscreen    P Projection    K Calibrate    Del Remove Ball    Tap Trash',
             fillColor: 'rgba(255,255,255,0.2)',
             fontFamily: 'Arial, sans-serif',
             fontSize: fs * 0.55,
@@ -721,6 +831,25 @@
         activeDrillIdx = idx;
         loadDrill(activeDrills[idx]);
         showDrillHUD();
+    }
+
+    function startCustomDrill() {
+        PT.appMode = 'drill';
+        PT.qrLayer.visible = false;
+        PT.qrLayer.removeChildren();
+        PT.cueOverlay = null;
+        PT.cueTarget = null;
+        if (PT.hideCueTarget) PT.hideCueTarget();
+        activeDrills = null;
+        activeDrillIdx = 0;
+        activeCategory = null;
+        PT.clearBalls();
+        PT.clearShotLines();
+        PT.uiLayer.removeChildren();
+        PT.rack9Ball();
+        showDrillHUD();
+        if (PT.toggleEditMode && !PT.editMode) PT.toggleEditMode();
+        if (PT.enterNewDrillMode) PT.enterNewDrillMode();
     }
 
     function nextDrill() {
@@ -787,6 +916,12 @@
             if (!drills) return;
             var perPage = menuItemCount - 1;
             var startIdx = drillListPage * perPage;
+            if (drills.length === 0 && drillListCatId === 'custom') {
+                if (menuCursor === 0) startCustomDrill();
+                else enterMenu();
+                PT.sendRemoteStatus();
+                return;
+            }
             if (menuCursor < perPage) {
                 var drillIdx = startIdx + menuCursor;
                 if (drillIdx < drills.length) {
@@ -847,7 +982,12 @@
     PT.enterMenu = enterMenu;
     PT.showDrillList = showDrillList;
     PT.showDrillHUD = showDrillHUD;
+    PT.drawCueTarget = drawCueTarget;
+    PT.setCueTarget = setCueTarget;
+    PT.hideCueTarget = hideCueTarget;
+    PT.hitCueTarget = hitCueTarget;
     PT.startDrill = startDrill;
+    PT.startCustomDrill = startCustomDrill;
     PT.nextDrill = nextDrill;
     PT.prevDrill = prevDrill;
     PT.menuNav = menuNav;

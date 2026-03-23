@@ -223,6 +223,7 @@
         drawTable();
         PT.redrawBalls();
         PT.clearShotLines();
+        if (PT.drawCueTarget) PT.drawCueTarget();
         if (PT.calibrationMode) PT.drawCalibrationHandles();
         if (PT.appMode === 'menu') PT.enterMenu();
         else if (PT.appMode === 'drillList') PT.showDrillList(PT.drillListCatId, PT.drillListPage);

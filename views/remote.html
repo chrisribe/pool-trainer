@@ -119,6 +119,15 @@ body.app-loading .loading-overlay {
 .btn-edit-save:active { background: #0a0; }
 .btn-edit-new { border-color: #f0a; background: #2a1a2e; }
 .btn-edit-new:active { background: #f0a; }
+.btn-drop { border-color: #fa0; background: #2e2a1a; }
+.btn-drop:active { background: #fa0; color: #000; }
+
+/* New drill form */
+.form-field { padding: 4px 0; }
+.form-label { font-size: 11px; color: #888; display: block; margin-bottom: 3px; }
+.form-input { width: 100%; padding: 10px; font-size: 16px; border: 2px solid #555; border-radius: 8px;
+    background: #2a2a3e; color: #fff; font-family: Arial, sans-serif; box-sizing: border-box; }
+.form-input:focus { border-color: #f0a; outline: none; }
 </style>
 </head>
 <body>
@@ -154,9 +163,32 @@ body.app-loading .loading-overlay {
         </div>
         <div class="btn btn-edit-nav" data-action="editDown" style="flex:1.2"><span class="icon">▼</span>DOWN</div>
         <div class="btn-row" style="flex:0.8">
+            <div class="btn btn-edit-adj" data-action="ballPrev"><span class="icon">◀</span></div>
+            <div class="btn btn-drop" data-action="dropBall"><span class="icon" id="drop-ball-icon">⓪</span>DROP</div>
+            <div class="btn btn-edit-adj" data-action="ballNext"><span class="icon">▶</span></div>
+        </div>
+        <div class="btn-row" style="flex:0.8">
             <div class="btn btn-edit-done" data-action="editDone"><span class="icon">✕</span>DONE</div>
             <div class="btn btn-edit-save" data-action="editSave"><span class="icon">💾</span>SAVE</div>
             <div class="btn btn-edit-new" data-action="editNew"><span class="icon">➕</span>NEW</div>
+        </div>
+    </div>
+
+    <!-- NEW DRILL VIEW: name input + category/difficulty -->
+    <div class="view" id="view-newdrill">
+        <div class="form-field">
+            <label class="form-label">Drill Name</label>
+            <input type="text" id="newdrill-name" class="form-input" placeholder="My Custom Drill" autocomplete="off">
+        </div>
+        <div class="btn btn-edit-nav" data-action="ndUp" style="flex:0.8"><span class="icon">▲</span></div>
+        <div class="btn-row" style="flex:0.8">
+            <div class="btn btn-edit-adj" data-action="ndLeft"><span class="icon">◀</span></div>
+            <div class="btn btn-edit-adj" data-action="ndRight"><span class="icon">▶</span></div>
+        </div>
+        <div class="btn btn-edit-nav" data-action="ndDown" style="flex:0.8"><span class="icon">▼</span></div>
+        <div class="btn-row" style="flex:0.8">
+            <div class="btn btn-edit-done" data-action="ndCancel"><span class="icon">✕</span>CANCEL</div>
+            <div class="btn btn-edit-save" data-action="ndSave"><span class="icon">💾</span>SAVE</div>
         </div>
     </div>
 
@@ -187,6 +219,8 @@ var currentMode = '';
 var primaryAppId = null;
 var loadingTitleEl = null;
 var loadingSubEl = null;
+var dropBallNum = 0;
+var ballIcons = ['⓪','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮'];
 
 function init() {
     if (initialized) return;
@@ -204,13 +238,55 @@ function init() {
             btn.addEventListener('touchstart', function (e) {
                 e.preventDefault();
                 lastTouchTime = Date.now();
-                send(btn.getAttribute('data-action'));
+                handleAction(btn.getAttribute('data-action'));
             }, { passive: false });
             btn.addEventListener('mousedown', function () {
                 if (Date.now() - lastTouchTime < 500) return;
-                send(btn.getAttribute('data-action'));
+                handleAction(btn.getAttribute('data-action'));
             });
         })(btns[i]);
+    }
+
+    // Handle special actions that need extra data
+    function handleAction(action) {
+        if (action === 'ballPrev') {
+            dropBallNum = (dropBallNum - 1 + 16) % 16;
+            updateDropIcon();
+            return;
+        }
+        if (action === 'ballNext') {
+            dropBallNum = (dropBallNum + 1) % 16;
+            updateDropIcon();
+            return;
+        }
+        if (action === 'dropBall') {
+            send('dropBall', { num: dropBallNum });
+            return;
+        }
+        if (action === 'editNew') {
+            // Switch remote to new drill view for name input
+            switchView('newdrill');
+            var nameInput = document.getElementById('newdrill-name');
+            if (nameInput) { nameInput.value = ''; nameInput.focus(); }
+            // Tell main app to enter new drill mode (no prompt)
+            send('editNewRemote');
+            return;
+        }
+        if (action === 'ndSave') {
+            var nameInput = document.getElementById('newdrill-name');
+            var name = nameInput ? nameInput.value.trim() : '';
+            if (!name) { nameInput.focus(); return; }
+            // Send name first, then save
+            send('ndName', { name: name });
+            setTimeout(function () { send('ndSave'); }, 50);
+            return;
+        }
+        if (action === 'ndCancel') {
+            switchView('edit');
+            send('ndCancel');
+            return;
+        }
+        send(action);
     }
 
     // Socket.IO handles reconnection, heartbeat, transport fallback automatically
@@ -257,10 +333,14 @@ function switchView(mode) {
     var menuView = document.getElementById('view-menu');
     var drillView = document.getElementById('view-drill');
     var editView = document.getElementById('view-edit');
+    var newdrillView = document.getElementById('view-newdrill');
     menuView.className = 'view';
     drillView.className = 'view';
     editView.className = 'view';
-    if (mode === 'edit') {
+    newdrillView.className = 'view';
+    if (mode === 'newdrill') {
+        newdrillView.className = 'view active';
+    } else if (mode === 'edit') {
         editView.className = 'view active';
     } else if (mode === 'drill') {
         drillView.className = 'view active';
@@ -269,10 +349,17 @@ function switchView(mode) {
     }
 }
 
-function send(action) {
+function send(action, extra) {
     if (socket && socket.connected) {
-        socket.emit('cmd', { action: action });
+        var msg = { action: action };
+        if (extra) { for (var k in extra) msg[k] = extra[k]; }
+        socket.emit('cmd', msg);
     }
+}
+
+function updateDropIcon() {
+    var el = document.getElementById('drop-ball-icon');
+    if (el) el.textContent = ballIcons[dropBallNum];
 }
 </script>
 </body>

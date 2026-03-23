@@ -4,17 +4,54 @@
     "description": "Pot the 1-ball and hide the cue ball behind the 2-ball. No direct shot for opponent.",
     "difficulty": 3,
     "balls": [
-      { "num": 0, "x": 22, "y": 66 },
-      { "num": 1, "x": 22, "y": 50 }
-    ]
+      {
+        "num": 0,
+        "x": 22.07,
+        "y": 68.11
+      },
+      {
+        "num": 1,
+        "x": 22,
+        "y": 58
+      },
+      {
+        "num": 2,
+        "x": 22,
+        "y": 50
+      }
+    ],
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0.25,
+        "y": 0
+      },
+      "power": 0.2
+    },
+    "cueTarget": {
+      "x": 28.519949508808516,
+      "y": 57.844026123703415
+    },
+    "aimLine": {
+      "x": 23.39,
+      "y": 53.49
+    }
   },
   {
     "name": "Rail Safety",
     "description": "Send the cue ball to the far rail while leaving the object ball safe. Two-way shot.",
     "difficulty": 3,
     "balls": [
-      { "num": 0, "x": 16, "y": 60 },
-      { "num": 1, "x": 32, "y": 40 }
+      {
+        "num": 0,
+        "x": 16,
+        "y": 60
+      },
+      {
+        "num": 1,
+        "x": 32,
+        "y": 40
+      }
     ]
   },
   {
@@ -22,8 +59,16 @@
     "description": "Play the cue ball behind a blocker. Control speed to land tight.",
     "difficulty": 4,
     "balls": [
-      { "num": 0, "x": 22, "y": 66 },
-      { "num": 1, "x": 12, "y": 50 }
+      {
+        "num": 0,
+        "x": 22,
+        "y": 66
+      },
+      {
+        "num": 1,
+        "x": 12,
+        "y": 50
+      }
     ]
   }
 ]

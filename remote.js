@@ -67,6 +67,15 @@
         socket = io({ query: { role: 'main' } });
 
         socket.on('cmd', function (data) {
+            if (data.action === 'ndName' && data.name) {
+                PT.newDrillName = data.name;
+                if (PT.drawNewDrillPanel) PT.drawNewDrillPanel();
+                return;
+            }
+            if (data.action === 'dropBall' && typeof data.num === 'number') {
+                PT.dropBall(data.num);
+                return;
+            }
             handleRemoteCommand(data.action);
         });
     }
@@ -96,16 +105,40 @@
                 if (PT.editMode && PT.editAdjust) { PT.editAdjust(1); PT.refreshEditView(); }
                 break;
             case 'editSave':
-                if (PT.saveDrill) { PT.saveDrill(PT.showSaveFeedback); }
+                if (PT.activeDrills && PT.activeDrills.length && PT.saveDrill) {
+                    PT.saveDrill(PT.showSaveFeedback);
+                }
                 break;
             case 'editDone':
                 if (PT.toggleEditMode) { PT.toggleEditMode(); }
                 break;
             case 'editNew':
-                if (PT.saveAsNewDrill) {
-                    var name = prompt('New drill name:');
-                    if (name) PT.saveAsNewDrill(name, PT.showSaveFeedback);
-                }
+                if (PT.enterNewDrillMode) { PT.enterNewDrillMode(); }
+                break;
+            case 'editNewRemote':
+                if (PT.enterNewDrillModeRemote) { PT.enterNewDrillModeRemote('New Drill'); }
+                break;
+            // New drill mode commands
+            case 'ndUp':
+                if (PT.newDrillMode) { PT.newDrillCursor = Math.max(0, PT.newDrillCursor - 1); PT.drawNewDrillPanel(); }
+                break;
+            case 'ndDown':
+                if (PT.newDrillMode) { PT.newDrillCursor = Math.min(PT.newDrillFields.length - 1, PT.newDrillCursor + 1); PT.drawNewDrillPanel(); }
+                break;
+            case 'ndLeft':
+                if (PT.newDrillMode && PT.newDrillAdjust) { PT.newDrillAdjust(-1); PT.drawNewDrillPanel(); }
+                break;
+            case 'ndRight':
+                if (PT.newDrillMode && PT.newDrillAdjust) { PT.newDrillAdjust(1); PT.drawNewDrillPanel(); }
+                break;
+            case 'ndSave':
+                if (PT.confirmNewDrill) { PT.confirmNewDrill(); }
+                break;
+            case 'ndCancel':
+                if (PT.cancelNewDrill) { PT.cancelNewDrill(); }
+                break;
+            case 'ndName':
+                // Remote sends drill name
                 break;
             case 'rack9':
                 PT.appMode = 'drill';
@@ -113,7 +146,7 @@
                 PT.qrLayer.visible = false;
                 PT.qrLayer.removeChildren();
                 PT.rack9Ball();
-                PT.uiLayer.removeChildren();
+                PT.showDrillHUD();
                 break;
             case 'rack8':
                 PT.appMode = 'drill';
@@ -121,7 +154,7 @@
                 PT.qrLayer.visible = false;
                 PT.qrLayer.removeChildren();
                 PT.rack8Ball();
-                PT.uiLayer.removeChildren();
+                PT.showDrillHUD();
                 break;
             case 'clear':      PT.clearBalls(); PT.clearShotLines(); break;
             case 'projection':
@@ -149,7 +182,7 @@
         } else if (PT.appMode === 'drillList') {
             text = PT.activeCategory || 'Drills';
         }
-        var remoteMode = PT.editMode ? 'edit' : (PT.appMode === 'drill') ? 'drill' : 'menu';
+        var remoteMode = PT.newDrillMode ? 'newdrill' : PT.editMode ? 'edit' : (PT.appMode === 'drill') ? 'drill' : 'menu';
         socket.emit('cmd', {
             type: 'status',
             text: text,
@@ -193,6 +226,7 @@
             if (!PT.cueOverlay) {
                 PT.cueOverlay = { show: true, tip: { x: 0, y: 0 }, power: 0.5 };
             }
+            if (PT.clearShotLines) PT.clearShotLines();
             PT.editCursor = 0;
             refreshEditView();
         } else {
@@ -200,6 +234,14 @@
             if (PT._editPanelGroup) { PT._editPanelGroup.remove(); PT._editPanelGroup = null; }
             if (PT.activeDrills && PT.activeDrills.length) {
                 PT.startDrill(PT.activeDrillIdx);
+            } else {
+                var cue = PT.balls && PT.balls[0];
+                if (cue && PT.lastAimPoint) {
+                    PT.drawShotLines(cue.tableX, cue.tableY, PT.lastAimPoint.x, PT.lastAimPoint.y);
+                } else {
+                    PT.clearShotLines();
+                }
+                if (PT.showDrillHUD) PT.showDrillHUD();
             }
             sendRemoteStatus();
         }
@@ -212,6 +254,69 @@
         sendRemoteStatus();
     }
 
+    function enterNewDrillMode() {
+        if (!PT.editMode) return;
+        // On keyboard, prompt for name; remote sends name via ndName action
+        var name = prompt('Drill name:');
+        if (!name) return;
+        PT.newDrillName = name;
+        PT.newDrillCatIdx = DRILL_CATALOG.length - 1; // default Custom
+        PT.newDrillDifficulty = 1;
+        PT.newDrillCursor = 0;
+        PT.newDrillMode = true;
+        // Hide edit panel, show new drill panel
+        if (PT._editPanelGroup) { PT._editPanelGroup.remove(); PT._editPanelGroup = null; }
+        if (PT.drawNewDrillPanel) PT.drawNewDrillPanel();
+        sendRemoteStatus();
+    }
+
+    function enterNewDrillModeRemote(name) {
+        if (!PT.editMode) return;
+        PT.newDrillName = name || 'New Drill';
+        PT.newDrillCatIdx = DRILL_CATALOG.length - 1;
+        PT.newDrillDifficulty = 1;
+        PT.newDrillCursor = 0;
+        PT.newDrillMode = true;
+        if (PT._editPanelGroup) { PT._editPanelGroup.remove(); PT._editPanelGroup = null; }
+        if (PT.drawNewDrillPanel) PT.drawNewDrillPanel();
+        sendRemoteStatus();
+    }
+
+    function newDrillAdjust(dir) {
+        if (!PT.newDrillMode) return;
+        var field = PT.newDrillFields[PT.newDrillCursor];
+        if (!field) return;
+        if (field.key === 'category') {
+            PT.newDrillCatIdx = (PT.newDrillCatIdx + dir + DRILL_CATALOG.length) % DRILL_CATALOG.length;
+        } else if (field.key === 'difficulty') {
+            PT.newDrillDifficulty = Math.max(1, Math.min(3, PT.newDrillDifficulty + dir));
+        }
+    }
+
+    function confirmNewDrill() {
+        if (!PT.newDrillMode) return;
+        var cat = DRILL_CATALOG[PT.newDrillCatIdx];
+        if (!cat) return;
+        var catId = cat.id;
+        // Use saveAsNewDrill with the selected category
+        PT.saveAsNewDrill(PT.newDrillName, catId, PT.newDrillDifficulty, function (ok, msg) {
+            showSaveFeedback(ok, msg);
+            if (ok) {
+                PT.newDrillMode = false;
+                if (PT._newDrillPanelGroup) { PT._newDrillPanelGroup.remove(); PT._newDrillPanelGroup = null; }
+                PT.toggleEditMode();
+            }
+        });
+    }
+
+    function cancelNewDrill() {
+        PT.newDrillMode = false;
+        if (PT._newDrillPanelGroup) { PT._newDrillPanelGroup.remove(); PT._newDrillPanelGroup = null; }
+        // Return to edit panel
+        if (PT.drawEditPanel) PT.drawEditPanel();
+        sendRemoteStatus();
+    }
+
     // ── Exports ──
     PT.drawQRCode = drawQRCode;
     PT.sendRemoteStatus = sendRemoteStatus;
@@ -219,4 +324,9 @@
     PT.toggleEditMode = toggleEditMode;
     PT.refreshEditView = refreshEditView;
     PT.showSaveFeedback = showSaveFeedback;
+    PT.enterNewDrillMode = enterNewDrillMode;
+    PT.enterNewDrillModeRemote = enterNewDrillModeRemote;
+    PT.newDrillAdjust = newDrillAdjust;
+    PT.confirmNewDrill = confirmNewDrill;
+    PT.cancelNewDrill = cancelNewDrill;
 })();

@@ -14,9 +14,10 @@ window.PT = (function () {
     var colors = cfg.colors;
 
     // ── Layers ──
-    var tableLayer = new paper.Layer({ name: 'table' });
-    var shotLayer  = new paper.Layer({ name: 'shots' });
-    var ballLayer  = new paper.Layer({ name: 'balls' });
+    var tableLayer  = new paper.Layer({ name: 'table' });
+    var shotLayer   = new paper.Layer({ name: 'shots' });
+    var targetLayer = new paper.Layer({ name: 'targets' });
+    var ballLayer   = new paper.Layer({ name: 'balls' });
     var uiLayer    = new paper.Layer({ name: 'ui' });
     var qrLayer    = new paper.Layer({ name: 'qr' });
 
@@ -162,6 +163,7 @@ window.PT = (function () {
 
     // ── Cue overlay (per drill) ──
     var cueOverlay = null;
+    var cueTarget = null;
 
     // ── Edit mode ──
     var editMode = false;
@@ -170,6 +172,17 @@ window.PT = (function () {
         { key: 'tipX',  label: 'Tip X',  min: -0.8, max: 0.8, step: 0.05 },
         { key: 'tipY',  label: 'Tip Y',  min: -0.8, max: 0.8, step: 0.05 },
         { key: 'power', label: 'Power',  min: 0,    max: 1,   step: 0.1  }
+    ];
+
+    // ── New drill mode (sub-mode of edit) ──
+    var newDrillMode = false;
+    var newDrillName = '';
+    var newDrillCatIdx = DRILL_CATALOG.length - 1;  // default to "Custom"
+    var newDrillDifficulty = 1;
+    var newDrillCursor = 0;
+    var newDrillFields = [
+        { key: 'category',   label: 'Category' },
+        { key: 'difficulty', label: 'Difficulty' }
     ];
 
     // ── Pointer tool — created once, handlers in input.js ──
@@ -184,6 +197,7 @@ window.PT = (function () {
         // Layers
         tableLayer: tableLayer,
         shotLayer: shotLayer,
+        targetLayer: targetLayer,
         ballLayer: ballLayer,
         uiLayer: uiLayer,
         qrLayer: qrLayer,
@@ -237,12 +251,29 @@ window.PT = (function () {
         get cueOverlay() { return cueOverlay; },
         set cueOverlay(v) { cueOverlay = v; },
 
+        // Cue target (table coords relative to rail)
+        get cueTarget() { return cueTarget; },
+        set cueTarget(v) { cueTarget = v; },
+
         // Edit mode
         get editMode() { return editMode; },
         set editMode(v) { editMode = v; },
         get editCursor() { return editCursor; },
         set editCursor(v) { editCursor = v; },
         editFields: editFields,
+
+        // New drill mode
+        get newDrillMode() { return newDrillMode; },
+        set newDrillMode(v) { newDrillMode = v; },
+        get newDrillName() { return newDrillName; },
+        set newDrillName(v) { newDrillName = v; },
+        get newDrillCatIdx() { return newDrillCatIdx; },
+        set newDrillCatIdx(v) { newDrillCatIdx = v; },
+        get newDrillDifficulty() { return newDrillDifficulty; },
+        set newDrillDifficulty(v) { newDrillDifficulty = v; },
+        get newDrillCursor() { return newDrillCursor; },
+        set newDrillCursor(v) { newDrillCursor = v; },
+        newDrillFields: newDrillFields,
 
         // Calibration state
         get calibrationCorners() { return calibrationCorners; },

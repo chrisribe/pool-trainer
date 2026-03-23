@@ -302,6 +302,20 @@
         placeBall(0, cx, rail + ph * 0.75);
     }
 
+    // Drop a ball at table center (or select it if it already exists)
+    function dropBall(num) {
+        if (num < 0 || num > 15) return;
+        if (balls[num]) {
+            selectBall(num);
+            return;
+        }
+        var rail = cfg.railWidth;
+        var cx = rail + cfg.playWidth / 2;
+        var cy = rail + cfg.playHeight / 2;
+        placeBall(num, cx, cy);
+        selectBall(num);
+    }
+
     // ── Exports ──
     PT.createBallGroup = createBallGroup;
     PT.placeBall = placeBall;
@@ -318,4 +332,5 @@
     PT.hitDeleteIcon = hitDeleteIcon;
     PT.rack9Ball = rack9Ball;
     PT.rack8Ball = rack8Ball;
+    PT.dropBall = dropBall;
 })();
