@@ -58,11 +58,12 @@ function setAuthCookie(res) {
     res.setHeader('Set-Cookie', cookie);
 }
 
-function serveLogin(res, error) {
+function serveLogin(res, error, returnTo) {
     var loginPath = path.join(__dirname, 'views', 'login.html');
     fs.readFile(loginPath, 'utf8', function (err, html) {
         if (err) { res.writeHead(500); res.end('Login page not found'); return; }
         html = html.replace('{{ERROR}}', error ? '<div class="err">' + error + '</div>' : '');
+        html = html.replace('{{RETURN_TO}}', returnTo || '/');
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(html);
     });
@@ -88,12 +89,14 @@ var server = http.createServer(function (req, res) {
     // ── Login POST ──
     if (req.url === '/login' && req.method === 'POST') {
         parseFormBody(req, function (params) {
+            // Only allow relative redirects
+            var returnTo = (params.return_to && params.return_to.startsWith('/')) ? params.return_to : '/';
             if (params.pin === PIN) {
                 setAuthCookie(res);
-                res.writeHead(302, { 'Location': '/' });
+                res.writeHead(302, { 'Location': returnTo });
                 res.end();
             } else {
-                serveLogin(res, 'Wrong PIN');
+                serveLogin(res, 'Wrong PIN', returnTo);
             }
         });
         return;
@@ -101,7 +104,7 @@ var server = http.createServer(function (req, res) {
 
     // ── Auth gate (skip socket.io path) ──
     if (PIN && !req.url.startsWith('/socket.io') && !isAuthed(req)) {
-        serveLogin(res);
+        serveLogin(res, null, req.url);
         return;
     }
 
