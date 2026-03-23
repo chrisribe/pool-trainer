@@ -71,6 +71,9 @@ docker compose restart
 
 # Full rebuild (after code changes)
 docker compose up -d --build
+
+# Local dev start
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
 ## Architecture

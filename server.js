@@ -109,9 +109,11 @@ var server = http.createServer(function (req, res) {
     }
 
     // API: QR code for remote control URL
-    if (req.url === '/api/remote-qr') {
+    if (req.url.startsWith('/api/remote-qr')) {
+        var qrParams = new URL(req.url, 'http://localhost').searchParams;
+        var session = qrParams.get('session') || '';
         var baseUrl = process.env.PUBLIC_URL || ('http://' + getLocalIP() + ':' + PORT);
-        var remoteUrl = baseUrl + '/remote';
+        var remoteUrl = baseUrl + '/remote' + (session ? '?session=' + encodeURIComponent(session) : '');
         QRCode.toDataURL(remoteUrl, { width: 256, margin: 1, color: { dark: '#ffffff', light: '#00000000' } }, function (err, dataUrl) {
             if (err) {
                 res.writeHead(500);
@@ -236,13 +238,23 @@ function clientSummary() {
 
 io.on('connection', function (socket) {
     var role = socket.handshake.query.role || 'unknown';
+    var session = socket.handshake.query.session || '';
     socket.role = role;
-    socket.join(role);
-    console.log('+ ' + role + '  ' + clientSummary());
+    socket.session = session;
 
-    // Relay: remote → main, main → remote
+    // Join session-scoped rooms for isolation
+    if (session) {
+        socket.join(session + '-' + role);
+    } else {
+        socket.join(role);
+    }
+    console.log('+ ' + role + (session ? ' [' + session + ']' : '') + '  ' + clientSummary());
+
+    // Relay: remote → main, main → remote (scoped to session)
     socket.on('cmd', function (data) {
-        socket.to(role === 'remote' ? 'main' : 'remote').emit('cmd', data);
+        var target = role === 'remote' ? 'main' : 'remote';
+        var room = session ? (session + '-' + target) : target;
+        socket.to(room).emit('cmd', data);
     });
 
     // Test echo
@@ -251,7 +263,7 @@ io.on('connection', function (socket) {
     });
 
     socket.on('disconnect', function (reason) {
-        console.log('- ' + role + '  reason=' + reason + '  ' + clientSummary());
+        console.log('- ' + role + (session ? ' [' + session + ']' : '') + '  reason=' + reason + '  ' + clientSummary());
     });
 });
 

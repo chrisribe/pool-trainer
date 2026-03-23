@@ -8,7 +8,7 @@
 
     var socket = null;
     var cachedQR = null;
-    var appId = 'main-' + Math.random().toString(36).slice(2, 10);
+    var sessionId = (crypto.randomUUID ? crypto.randomUUID() : 'main-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36));
 
     // QR code on its own layer
     function drawQRCode() {
@@ -51,7 +51,7 @@
     function fetchRemoteQR(callback) {
         if (cachedQR) { callback(cachedQR.qr, cachedQR.url); return; }
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', '/api/remote-qr', true);
+        xhr.open('GET', '/api/remote-qr?session=' + encodeURIComponent(sessionId), true);
         xhr.onload = function () {
             if (xhr.status === 200) {
                 try {
@@ -64,7 +64,7 @@
     }
 
     function connectRemote() {
-        socket = io({ query: { role: 'main' } });
+        socket = io({ query: { role: 'main', session: sessionId } });
 
         socket.on('cmd', function (data) {
             if (data.action === 'ndName' && data.name) {
@@ -188,7 +188,7 @@
             text: text,
             mode: remoteMode,
             hasDrills: !!(PT.activeDrills && PT.activeDrills.length),
-            appId: appId
+            appId: sessionId
         });
     }
 

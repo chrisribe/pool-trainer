@@ -217,6 +217,7 @@ var lastTouchTime = 0;
 var initialized = false;
 var currentMode = '';
 var primaryAppId = null;
+var sessionId = new URLSearchParams(window.location.search).get('session') || '';
 var loadingTitleEl = null;
 var loadingSubEl = null;
 var dropBallNum = 0;
@@ -290,7 +291,7 @@ function init() {
     }
 
     // Socket.IO handles reconnection, heartbeat, transport fallback automatically
-    socket = io({ query: { role: 'remote' } });
+    socket = io({ query: { role: 'remote', session: sessionId } });
 
     socket.on('connect', function () {
         statusEl.textContent = 'Connected';
