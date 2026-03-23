@@ -1,0 +1,21 @@
+services:
+  server:
+    build: .
+    expose:
+      - "3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - PIN=${PIN}
+      - COOKIE_SECRET=${COOKIE_SECRET}
+      - PUBLIC_URL=${PUBLIC_URL}
+    volumes:
+      - ./drills:/app/drills
+    restart: unless-stopped
+    networks:
+      - proxy-net
+      - default
+
+networks:
+  proxy-net:
+    external: true

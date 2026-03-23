@@ -2,10 +2,15 @@ var http = require('http');
 var fs = require('fs');
 var path = require('path');
 var os = require('os');
+var crypto = require('crypto');
 var QRCode = require('qrcode');
 var { Server } = require('socket.io');
 
-var PORT = 3001;
+var PORT = parseInt(process.env.PORT, 10) || 3001;
+var PIN = process.env.PIN || '';     // empty = no auth
+var COOKIE_SECRET = process.env.COOKIE_SECRET || crypto.randomBytes(32).toString('hex');
+var COOKIE_NAME = 'pt_auth';
+var COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
 var MIME = {
     '.html': 'text/html',
     '.css': 'text/css',
@@ -15,11 +20,95 @@ var MIME = {
     '.svg': 'image/svg+xml'
 };
 
+// ── PIN Auth ──
+function signValue(val) {
+    return val + '.' + crypto.createHmac('sha256', COOKIE_SECRET).update(val).digest('base64url');
+}
+
+function verifySignedValue(signed) {
+    if (!signed) return null;
+    var idx = signed.lastIndexOf('.');
+    if (idx < 1) return null;
+    var val = signed.substring(0, idx);
+    if (signValue(val) === signed) return val;
+    return null;
+}
+
+function parseCookies(req) {
+    var cookies = {};
+    var header = req.headers.cookie || '';
+    header.split(';').forEach(function (part) {
+        var eq = part.indexOf('=');
+        if (eq > 0) cookies[part.substring(0, eq).trim()] = decodeURIComponent(part.substring(eq + 1).trim());
+    });
+    return cookies;
+}
+
+function isAuthed(req) {
+    if (!PIN) return true;  // no PIN configured = open access
+    var cookies = parseCookies(req);
+    var val = verifySignedValue(cookies[COOKIE_NAME]);
+    return val === 'ok';
+}
+
+function setAuthCookie(res) {
+    var signed = signValue('ok');
+    var cookie = COOKIE_NAME + '=' + signed + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + COOKIE_MAX_AGE;
+    if (process.env.NODE_ENV === 'production') cookie += '; Secure';
+    res.setHeader('Set-Cookie', cookie);
+}
+
+function serveLogin(res, error) {
+    var loginPath = path.join(__dirname, 'views', 'login.html');
+    fs.readFile(loginPath, 'utf8', function (err, html) {
+        if (err) { res.writeHead(500); res.end('Login page not found'); return; }
+        html = html.replace('{{ERROR}}', error ? '<div class="err">' + error + '</div>' : '');
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(html);
+    });
+}
+
+function parseFormBody(req, cb) {
+    var body = '';
+    req.on('data', function (chunk) {
+        if (body.length > 2000) { req.destroy(); return; }
+        body += chunk;
+    });
+    req.on('end', function () {
+        var params = {};
+        body.split('&').forEach(function (pair) {
+            var eq = pair.indexOf('=');
+            if (eq > 0) params[decodeURIComponent(pair.substring(0, eq))] = decodeURIComponent(pair.substring(eq + 1).replace(/\+/g, ' '));
+        });
+        cb(params);
+    });
+}
+
 var server = http.createServer(function (req, res) {
+    // ── Login POST ──
+    if (req.url === '/login' && req.method === 'POST') {
+        parseFormBody(req, function (params) {
+            if (params.pin === PIN) {
+                setAuthCookie(res);
+                res.writeHead(302, { 'Location': '/' });
+                res.end();
+            } else {
+                serveLogin(res, 'Wrong PIN');
+            }
+        });
+        return;
+    }
+
+    // ── Auth gate (skip socket.io path) ──
+    if (PIN && !req.url.startsWith('/socket.io') && !isAuthed(req)) {
+        serveLogin(res);
+        return;
+    }
+
     // API: QR code for remote control URL
     if (req.url === '/api/remote-qr') {
-        var ip = getLocalIP();
-        var remoteUrl = 'http://' + ip + ':' + PORT + '/remote';
+        var baseUrl = process.env.PUBLIC_URL || ('http://' + getLocalIP() + ':' + PORT);
+        var remoteUrl = baseUrl + '/remote';
         QRCode.toDataURL(remoteUrl, { width: 256, margin: 1, color: { dark: '#ffffff', light: '#00000000' } }, function (err, dataUrl) {
             if (err) {
                 res.writeHead(500);
@@ -189,4 +278,6 @@ server.listen(PORT, function () {
     var ip = getLocalIP();
     console.log('Pool Trainer running at http://localhost:' + PORT);
     console.log('Remote control: http://' + ip + ':' + PORT + '/remote');
+    if (PIN) console.log('PIN auth enabled');
+    if (process.env.PUBLIC_URL) console.log('Public URL: ' + process.env.PUBLIC_URL);
 });
