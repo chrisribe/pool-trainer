@@ -100,9 +100,10 @@
         var vy = Math.sin(launchAngle) * speed;
 
         // Spin from tip offset
-        // tipY < 0 (above center) → backspin, tipY > 0 → topspin
+        // Overlay convention: tipY < 0 = dot above center = hitting high = topspin/follow
+        //                     tipY > 0 = dot below center = hitting low  = backspin/draw
         // tipX → sidespin (english)
-        var topspin  = tipY * speed * 0.6;   // positive = topspin
+        var topspin  = -tipY * speed * 0.6;  // negate: tipY<0 (high hit) → positive topspin
         var sidespin = tipX * speed * 0.5;   // positive = right english
 
         return {
@@ -212,7 +213,7 @@
     function applyCBSpin(cbVx, cbVy, topspin, sidespin, nx, ny) {
         // nx,ny = line-of-centers direction (toward where OB was)
         // Topspin pushes CB forward (along nx,ny), backspin pulls back
-        var spinForward = topspin * 0.015;
+        var spinForward = topspin * 0.5;
         cbVx += nx * spinForward;
         cbVy += ny * spinForward;
 
@@ -357,6 +358,8 @@
                 vx: s.vx || 0,
                 vy: s.vy || 0,
                 sidespin: s.sidespin || 0,
+                topspin: s.topspin || 0,
+                topspinApplied: false,
                 pocketed: null,
                 distance: 0,
                 path: [{ x: s.x, y: s.y }],
@@ -400,6 +403,24 @@
                     b2.event = true;
                     collisionCount++;
                     hit = true;
+
+                    // Apply topspin/draw to cue ball after its first collision
+                    if (b1.topspin && !b1.topspinApplied) {
+                        var nx1 = (b2.x - b1.x), ny1 = (b2.y - b1.y);
+                        var nl1 = len(nx1, ny1);
+                        if (nl1 > 1e-6) { nx1 /= nl1; ny1 /= nl1; }
+                        var sp1 = applyCBSpin(b1.vx, b1.vy, b1.topspin, b1.sidespin, nx1, ny1);
+                        b1.vx = sp1.vx; b1.vy = sp1.vy;
+                        b1.topspinApplied = true;
+                    }
+                    if (b2.topspin && !b2.topspinApplied) {
+                        var nx2 = (b1.x - b2.x), ny2 = (b1.y - b2.y);
+                        var nl2 = len(nx2, ny2);
+                        if (nl2 > 1e-6) { nx2 /= nl2; ny2 /= nl2; }
+                        var sp2 = applyCBSpin(b2.vx, b2.vy, b2.topspin, b2.sidespin, nx2, ny2);
+                        b2.vx = sp2.vx; b2.vy = sp2.vy;
+                        b2.topspinApplied = true;
+                    }
                 }
             }
             return hit;
@@ -590,7 +611,8 @@
                             y: cueY,
                             vx: launch.vx,
                             vy: launch.vy,
-                            sidespin: launch.sidespin
+                            sidespin: launch.sidespin,
+                            topspin: launch.topspin
                         });
                     } else {
                         statesFromStart.push({
