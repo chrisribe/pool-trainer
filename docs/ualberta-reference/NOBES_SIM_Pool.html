@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href = "./Simulations/Pool/styles/style.css">
+    <link rel="stylesheet" href="./styles/reset.css" >
+    <link rel="stylesheet" href="./styles/styl.css">
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="./js/p5.min.js"></script>
+    <script src="./Simulations/Pool/js/pool.js"></script>
+    <script src="./Simulations/Pool/js/poolFBD.js"></script>
+    <script src="./Simulations/Pool/js/poolInput.js"></script>
+    <script src="js/randomizer.js"></script>
+    <title>Pool Game Simulation</title>
+  </head>
+
+  <body>
+    <div id="header">
+      <div id="header_in">
+        <h1><a href="NOBES_MecE_265.html"><b>NOBES<br>SOLIDWORKS</b></a></h1>
+        <div id="menu">
+          <ul>
+            <li><a href="NOBES_MecE_265.html">MecE 265</a></li>
+            <li><a href="NOBES_Courses.html">Courses</a></li>
+            <li><a href="NOBES_SIM.html" class="active">Web Simulations</a></li>
+            <li><a href="NOBES_Tutorials.html">SW Tutorials</a></li>
+            <li><a href="NOBES_CSWA.html">CSWA/CSWP</a></li>
+            <li><a href="NOBES_Resources.html">Resources</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div id="main_part_inner" style="min-width:1000px;">
+      <div id="main_part_inner_in">
+        <h2><b>Pool Simulation </b></h2>
+      </div>
+    </div>
+
+    <noscript>
+      <style type="text/css">
+        #content_inner {display: none};
+      </style>
+      This page requires javascript to be enabled or a javascript able browser.
+    </noscript>
+    <div id="content_inner" style = "width:1120px">
+    <div id= "level1">
+        <div id="intro-container">
+            <div id="text-container">
+              <b>INTRODUCTION:</b>
+              <br></br>
+              This is a game/simulation of pool.<br>
+              The <b>CONTROLS</b> section contains general controls for the simulation.<br>
+              The <b>OUTPUT</b> section contains equations and FBD for the first collision.<br>
+              The <b>IMPACT CALCULATIONS</b> section shows all the impact calculations for the first collision. It also contains a PDF showing the calculations in detail<br>
+              The <b>INSTRUCTIONAL VIDEO</b> gives an in depth introduction to the simulation.<br>
+              <br><br>Click <button id ="resetbutton">Reset Game</button> to reset the game.<br>
+
+            </div>
+  
+            <div id="video-container">
+              <b>INSTRUCTIONAL VIDEO:</b>
+              <video height="180" controls>
+                <source src="./Simulations/Pool/Simulation/Pool.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+              </video>
+            </div>
+          </div>
+        </div>
+
+      <div id="simulation">
+        <div  id="container"></div>
+        <div id="mid-level">
+        <div class="output-container">
+          <b>OUTPUT</b> <span class="dropdown" onclick="showMenu('output-content')">
+            <svg xmlns="http://www.w3.org/2000/svg"  width="15" height="15" fill="currentColor" class="dropdown-btn bi bi-question-circle" viewBox="0 0 16 16">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+              <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94z"/>
+            </svg>
+            <div id="output-content" class="dropdown-content">
+              <b>Output</b><br>
+              This section shows the final velocity calculations for the white ball. It also shows a diagram of the initial and final velocity vectors of the balls. Note: the vectors are not drawn to scale.
+            </div>
+          </span>
+          <div class="box-border" id="output">
+            <div>
+              Equations:
+              <div id = "equations">
+                \[v_{f} = \sqrt{{v_{fx}}^2 + {v_{fy}}^2} \; \mathrm{m/s} \qquad \theta_f = \arctan(\frac{v_{fy}}{v_{fx}})^{\circ}\]
+              </div>
+              <div id="white-ball-calculation"></div>
+            </div>
+            <label>Free Body Diagram of First Collision:</label><br><br>
+            <div id = "container1"></div>
+          </div>
+        </div>
+        <div class="input-container">
+          <b>CONTROLS</b> <span class="dropdown" onclick="showMenu('control-content')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="currentColor" class="dropdown-btn bi bi-question-circle" viewBox="0 0 16 16">
+              <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+              <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286zm1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94z"/>
+            </svg>
+            <div id="control-content" class="dropdown-content">
+              <b>CONTROLS</b>
+              <div>
+                <b>Left Click:</b><br>
+                Left click and drag on the white ball to set the velocity and angle. The sliders will update automatically<br>
+                <b>Right Click:</b><br>
+                Right click anywhere to shoot the ball<br>
+                <b>Coordinate System:</b><br>
+                Choose which coordinate system the controls use<br>
+                Toggle the coordinate system shown on the table on and off<br>
+                <b>Sliders:</b><br>
+                Click on the orange box and drag it around to change the value.<br>
+                <b>X Velocity</b> [min:-30 max:30 step:0.1]<br>
+                <b>Y Velocity</b> [min:-30 max:30 step:0.1]<br>
+                <b>Velocity</b> [min:0 max:45 step:0.1]<br>
+                <b>Angle</b> [min:0 max:360 step:1]<br>
+                <b>Coefficient of Resitution between Bumper and Ball</b> [min:0.25 max:1 step:0.01]<br>
+                <b>Coefficient of Resitution between Balls</b> [min:0.25 max:1 step:0.01]<br>
+                <b>Coefficient of Rolling Resistance between Cloth and Ball</b> [min:0.005 max:0.015 step:0.01]<br>
+                <b>Actions:</b><br>
+                Shoot: Apply the specified x and y velocities to the ball<br> 
+                Reset: Reset the simulation<br>
+                <b>Projection Mode:</b><br>
+                Choose which balls paths will be displayed<br>
+                <b>Show Impact Calculations:</b><br>
+                Toggle impact calculations on and off
+              </div>
+            </div>
+          </span>
+          <div class="box-border" id="input">
+            <label>Coordinate System:</label><br>
+            <div class="coordinate-system-container">
+              <label class="coordinate-system-toggle coordinate-system-toggle-active">
+                <input type="radio" name="coordinateSystem" value="1" checked> Cartesian
+              </label>
+              <label class="coordinate-system-toggle">
+                <input type="radio" name="coordinateSystem" value="2"> Polar
+              </label>
+              <label class="switch">
+                <input id = "axis-toggle" class="checkbox" type="checkbox" checked>
+                <span class="checkbox-slider"></span>
+              </label>
+            </div> <br>
+            <div id = "cartesian-controls">
+              <label for="xVel">X Velocity (<span id="e1">0</span> m/s):</label><br>
+              <input class="slider" type="range" min="-30" max="30" value="0" step="0.001" id="xVel"><br>
+              <input type="number" min="-30" max="30" value="0" step="0.1" id="xVel"><br/>
+              <br>    
+              <label for="yVel">Y Velocity (<span id="e2">0</span> m/s):</label><br/>
+              <input class="slider" type="range" min="-30" max="30" value="0" step="0.001" id="yVel"><br/>
+              <input type="number" min="-30" max="30" value="0" step="0.1" id="yVel"><br/>
+              <br>
+            </div>
+            <div id = "polar-controls">
+              <label for="Vel">Velocity (<span id="e6">0</span> m/s):</label><br>
+              <input class="slider" type="range" min="0" max="45" value="0" step="0.001" id="Vel"><br>
+              <input type="number" min="0" max="45" value="0" step="0.1" id="Vel"><br/>
+              <br>   
+              <label for="Ang">Angle (<span id="e7">0</span>°):</label><br/>
+              <input class="slider" type="range" min="0" max="359.99" value="0" step="0.01" id="Ang"><br/>
+              <input type="number" min="0" max="359.99" value="0" step="1" id="Ang"><br/>
+              <br>
+            </div>
+            <label for="coeffBumper ">Coefficient of Resitution between Bumper and Ball (<span id="e3">0.5</span>):</label><br/>
+            <input class="slider" type="range" min="0.25" max="1" value="0.5" step="0.01" id="coeffBumper"><br/>
+            <br> 
+            <label for="coeffBalls">Coefficient of Restitution between Balls (<span id="e4">0.9</span>):</label><br/>
+            <input class="slider" type="range" min="0.25" max="1" value="0.9" step="0.01" id="coeffBalls"><br/>
+            <br>
+            <label for="coeffRoll">Coefficient of Rolling Resistance between Cloth and Ball (<span id="e5">0.010</span>):</label><br/>
+            <input class="slider" type="range" min="0.005" max="0.015" value="0.010" step="0.001" id="coeffRoll"><br/>
+            <br>             
+            <label>Actions: </label>
+            <div class = "button-container">           
+              <div class = "buttons">
+                <button id="shootbutton">Shoot</button>
+              </div>                
+              <div class = "buttons">
+                <button id ="resetbutton1">Reset Game</button>
+              </div>
+            </div>
+            <br>
+            <label>Projection Mode:</label><br>
+            <div class="projection-mode-container">
+              <label class="projection-mode-toggle">
+                <input type="radio" name="projectionMode" value="1"> White
+              </label>
+              <label class="projection-mode-toggle">
+                <input type="radio" name="projectionMode" value="2"> White + First Hit
+              </label>
+              <label class="projection-mode-toggle projection-mode-toggle-active">
+                <input type="radio" name="projectionMode" value="3" checked> All
+              </label>
+            </div>
+            <br>
+            <label>Show Impact Calculations: <br>
+              <label class="switch">
+                <input id = "calculation-toggle" class="checkbox" type="checkbox" checked>
+                <span class="checkbox-slider"></span>
+              </label>
+            </label>
+          </div>
+        </div>
+        </div>
+        <div class = "extra-calculation-container" id ="impact-calculation">
+          <b>IMPACT CALCULATIONS</b> 
+          <div class = "calculation-box-border" id = "extra-calculation">
+            Click <a target="_blank" href="./Simulations/Pool/Simulation/pool.pdf">here</a> for a detailed explanation of the calculations
+          </div>
+            <div class="box-border" id="white-calculation">
+              <div id="white-extra-calculation">
+                Hit a colored ball to see impact calculations.
+              </div>
+            </div>
+            <div class = "box-border" id = "other-calculation">
+              <div id = "other-extra-calculation">
+                Hit a colored ball to see impact calculations.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="footer">
+      <div id="footer_in">
+        <p>Copyright © 2016 <a href="#">Optical Diagnostics Group</a>. All Rights Reserved</p>
+        <span>Design By: Bianca Angotti and Carmen Leung</span> <br>
+        <p></p>
+        <span>Simulation By: Pranj Patel and Logan Vaughan</span>
+      </div>
+    </div>     
+  </body>    
+</html>

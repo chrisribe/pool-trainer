@@ -7,5 +7,6 @@ var DRILL_CATALOG = [
     { id: 'cut-shots',       name: 'Cut Shots',       icon: '📐', file: 'drills/cut-shots.json'       },
     { id: 'position-play',   name: 'Position Play',   icon: '🔄', file: 'drills/position-play.json'   },
     { id: 'safety',          name: 'Safety',           icon: '🛡️', file: 'drills/safety.json'          },
+    { id: 'aiming-techniques',name: 'Aiming Techniques',icon: '🎱', file: 'drills/aiming-techniques.json'},
     { id: 'custom',          name: 'Custom',           icon: '✏️', file: 'drills/custom.json'          }
 ];

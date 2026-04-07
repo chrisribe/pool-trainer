@@ -36,13 +36,15 @@
         var rail = cfg.railWidth;
         var pw = cfg.playWidth;
         var ph = cfg.playHeight;
+        var cDiag   = cfg.cornerPocketShelf * 0.7;
+        var sOffset = cfg.sidePocketShelf + cfg.sidePocketRadius;
         return [
-            { x: rail,      y: rail,          name: 'TL' },
-            { x: rail + pw, y: rail,          name: 'TR' },
-            { x: rail,      y: rail + ph,     name: 'BL' },
-            { x: rail + pw, y: rail + ph,     name: 'BR' },
-            { x: rail,      y: rail + ph / 2, name: 'ML' },
-            { x: rail + pw, y: rail + ph / 2, name: 'MR' }
+            { x: rail - cDiag,      y: rail - cDiag,          name: 'TL' },
+            { x: rail + pw + cDiag, y: rail - cDiag,          name: 'TR' },
+            { x: rail - cDiag,      y: rail + ph + cDiag,     name: 'BL' },
+            { x: rail + pw + cDiag, y: rail + ph + cDiag,     name: 'BR' },
+            { x: rail - sOffset,    y: rail + ph / 2,         name: 'ML' },
+            { x: rail + pw + sOffset, y: rail + ph / 2,       name: 'MR' }
         ];
     }
 
@@ -152,9 +154,15 @@
         var offsetMult = (typeof overlay.offset === 'number') ? overlay.offset : 2.2;
         var offset = r * offsetMult;
 
-        // Place overlay 180° from aim direction (behind the cue ball)
-        var px = -nx;
-        var py = -ny;
+        // Compute aim direction in canvas space
+        var aimCanvas = T(cueTx + nx, cueTy + ny).subtract(cueCenter);
+        var aimLen = aimCanvas.length;
+        var cnx = aimCanvas.x / aimLen;
+        var cny = aimCanvas.y / aimLen;
+
+        // Place overlay to the right of the aim line (player's perspective)
+        var px = -cny;
+        var py = cnx;
 
         var overlayCenter = new paper.Point(cueCenter.x + px * offset, cueCenter.y + py * offset);
 
@@ -234,7 +242,9 @@
         group.addChild(uiGroup);
 
         group.position = overlayCenter;
-        // Keep cue-ball overlay orientation fixed (tip position is absolute).
+        // Rotate overlay to align with aim direction so tip/power face the player
+        var aimAngleDeg = Math.atan2(cny, cnx) * (180 / Math.PI);
+        group.rotate(aimAngleDeg + 90, overlayCenter);
     }
 
     function drawCueOverlayAtCanvas(center, angleRad, overlay, sizeScale) {
@@ -854,6 +864,552 @@
         PT._newDrillPanelGroup = group;
     }
 
+    // ── Find target ball for auto-solve / animate ──
+    // Priority: 1) selected ball  2) aim-line target  3) best solvable ball
+
+    function findSolveTarget(cue) {
+        // 1. User-selected ball (tapped to highlight)
+        if (PT.selectedBall !== null && PT.selectedBall !== 0 && balls[PT.selectedBall]) {
+            return balls[PT.selectedBall];
+        }
+
+        // 2. Aim-line target (user drew an aim line hitting a ball)
+        if (PT.aimState) {
+            var aimDx = PT.aimState.aimTx - cue.tableX;
+            var aimDy = PT.aimState.aimTy - cue.tableY;
+            var found = findTargetBall(cue.tableX, cue.tableY, aimDx, aimDy);
+            if (found) return found.ball;
+        }
+
+        // 3. Scan all balls — pick the one with the best pocket solution
+        var physics = PT.physics;
+        var candidates = [];
+        Object.keys(balls).forEach(function (k) {
+            var b = balls[+k];
+            if (b.num === 0) return;
+            var pocket = physics.findBestPocketForSolve(b.tableX, b.tableY, cue.tableX, cue.tableY);
+            if (!pocket) return;
+            var dx = pocket.x - b.tableX;
+            var dy = pocket.y - b.tableY;
+            var pocketDist = Math.sqrt(dx * dx + dy * dy);
+            var cueToOb = Math.sqrt(
+                (b.tableX - cue.tableX) * (b.tableX - cue.tableX) +
+                (b.tableY - cue.tableY) * (b.tableY - cue.tableY)
+            );
+            // Cut angle
+            var obDir = { x: dx / pocketDist, y: dy / pocketDist };
+            var cueDir = { x: (b.tableX - cue.tableX) / cueToOb, y: (b.tableY - cue.tableY) / cueToOb };
+            var dotVal = cueDir.x * obDir.x + cueDir.y * obDir.y;
+            var cutAngle = Math.acos(Math.max(-1, Math.min(1, dotVal)));
+            // Score: small cut + short distance = best
+            var score = (1 - cutAngle / (Math.PI / 2)) * 100 - (cueToOb + pocketDist) * 0.3;
+            candidates.push({ ball: b, score: score });
+        });
+
+        if (candidates.length === 0) return null;
+        candidates.sort(function (a, b) { return b.score - a.score; });
+        return candidates[0].ball;
+    }
+
+    function showNoShotFeedback(msg) {
+        PT.shotLayer.activate();
+        var fb = PT.getFeltBounds();
+        new paper.PointText({
+            point: new paper.Point(fb.left + (fb.right - fb.left) * 0.5, fb.top + S(3)),
+            content: msg || 'NO SHOT FOUND',
+            fillColor: 'rgba(255,100,100,0.8)',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: S(1.8),
+            justification: 'center'
+        });
+    }
+
+    function getPocketSummary(sim) {
+        var out = {
+            count: 0,
+            entries: [],
+            text: 'MISS',
+            hasPocket: false
+        };
+        if (!sim || !sim.balls || !sim.balls.pocketed) return out;
+
+        Object.keys(sim.balls.pocketed).forEach(function (id) {
+            out.entries.push(id + ':' + sim.balls.pocketed[id]);
+        });
+        out.count = out.entries.length;
+        out.hasPocket = out.count > 0;
+        out.text = out.hasPocket ? ('POCKETED: ' + out.entries.join(', ')) : 'MISS';
+        return out;
+    }
+
+    // ── Auto-solve: run physics solver and draw predicted paths ──
+
+    function autoSolve() {
+        var cue = balls[0];
+        if (!cue) return;
+
+        // Clear stale aim state from previous clicks
+        PT.aimState = null;
+
+        var targetBall = findSolveTarget(cue);
+        if (!targetBall) { clearShotLines(); showNoShotFeedback('NO TARGET BALL'); return; }
+
+        var physics = PT.physics;
+        var solution = physics.solveShotForPocket(
+            cue.tableX, cue.tableY,
+            targetBall.tableX, targetBall.tableY,
+            null // auto-pick best pocket
+        );
+        if (!solution) { clearShotLines(); showNoShotFeedback('NO POCKETABLE SHOT FOR BALL ' + targetBall.num); return; }
+
+        // Apply solution to cue overlay
+        PT.cueOverlay = {
+            show: true,
+            tip: { x: solution.tipX, y: solution.tipY },
+            power: solution.power
+        };
+
+        // Set aim state to the solved angle
+        var aimLen = 30;
+        var aimTx = cue.tableX + Math.cos(solution.aimAngle) * aimLen;
+        var aimTy = cue.tableY + Math.sin(solution.aimAngle) * aimLen;
+        drawShotLines(cue.tableX, cue.tableY, aimTx, aimTy);
+
+        // Draw physics-predicted paths on top
+        PT.shotLayer.activate();
+        var sim = solution.simulation;
+        if (sim && sim.hit) {
+            // Preferred: multi-ball rendering from physics engine
+            if (sim.balls && sim.balls.paths) {
+                Object.keys(sim.balls.paths).forEach(function (id) {
+                    var path = sim.balls.paths[id];
+                    if (!path || path.length < 2) return;
+
+                    var pts = [];
+                    for (var pi = 0; pi < path.length; pi += 3) {
+                        pts.push(T(path[pi].x, path[pi].y));
+                    }
+                    if (pts.length < 2) return;
+
+                    var color = 'rgba(255,255,255,0.25)';
+                    var width = S(0.07);
+                    if (id === '0') {
+                        color = 'rgba(255,165,0,0.45)';
+                        width = S(0.08);
+                    } else if (id === 'target') {
+                        color = 'rgba(0,229,255,0.55)';
+                        width = S(0.1);
+                    }
+
+                    new paper.Path({
+                        segments: pts,
+                        strokeColor: color,
+                        strokeWidth: width,
+                        dashArray: [S(0.18), S(0.18)]
+                    });
+                });
+
+                // Pocket indicators for all pocketed balls
+                if (sim.balls.pocketed) {
+                    Object.keys(sim.balls.pocketed).forEach(function (id) {
+                        var pth = sim.balls.paths[id];
+                        if (!pth || !pth.length) return;
+                        var finalPt = pth[pth.length - 1];
+                        new paper.Path.Circle({
+                            center: T(finalPt.x, finalPt.y),
+                            radius: S(1.1),
+                            strokeColor: 'rgba(0,255,136,0.85)',
+                            strokeWidth: S(0.14),
+                            fillColor: null
+                        });
+                    });
+                }
+            } else {
+                // Fallback legacy rendering
+                if (sim.ob && sim.ob.path.length > 1) {
+                    var obPts = [];
+                    for (var i = 0; i < sim.ob.path.length; i += 3) {
+                        obPts.push(T(sim.ob.path[i].x, sim.ob.path[i].y));
+                    }
+                    if (obPts.length > 1) {
+                        new paper.Path({
+                            segments: obPts,
+                            strokeColor: 'rgba(0,229,255,0.5)',
+                            strokeWidth: S(0.1),
+                            dashArray: [S(0.2), S(0.2)]
+                        });
+                    }
+                }
+
+                if (sim.cb && sim.cb.path.length > 1) {
+                    var cbPts = [];
+                    for (var j = 0; j < sim.cb.path.length; j += 3) {
+                        cbPts.push(T(sim.cb.path[j].x, sim.cb.path[j].y));
+                    }
+                    if (cbPts.length > 1) {
+                        new paper.Path({
+                            segments: cbPts,
+                            strokeColor: 'rgba(255,165,0,0.4)',
+                            strokeWidth: S(0.08),
+                            dashArray: [S(0.15), S(0.15)]
+                        });
+                    }
+                }
+            }
+
+            // Status label
+            var pocketSummary = getPocketSummary(sim);
+            var statusText = pocketSummary.hasPocket
+                ? ('AUTO: ' + pocketSummary.text + ' (' + Math.round(solution.cutAngleDeg) + '\u00B0)')
+                : ('AUTO: miss (' + Math.round(solution.cutAngleDeg) + '\u00B0)');
+            var fb = PT.getFeltBounds();
+            new paper.PointText({
+                point: new paper.Point(fb.left + (fb.right - fb.left) * 0.5, fb.top + S(3)),
+                content: statusText,
+                fillColor: pocketSummary.hasPocket ? 'rgba(0,255,136,0.8)' : 'rgba(255,100,100,0.8)',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                fontSize: S(1.8),
+                justification: 'center'
+            });
+        }
+
+        // Refresh edit panel if in edit mode
+        if (PT.editMode) PT.drawEditPanel();
+    }
+
+    // ── Animated shot: roll balls along simulated paths ──
+
+    var animState = null;  // active animation state or null
+
+    function isAnimating() { return animState !== null; }
+
+    function stopAnimation() {
+        if (!animState) return;
+        // Restore balls to original positions and visibility
+        if (animState.cueBall) {
+            PT.placeBall(0, animState.origCueX, animState.origCueY);
+        }
+        if (animState.dynamicBalls && animState.dynamicBalls.length) {
+            for (var di = 0; di < animState.dynamicBalls.length; di++) {
+                var db = animState.dynamicBalls[di];
+                if (!db || !db.ball) continue;
+                if (db.ball.group) {
+                    db.ball.group.visible = true;
+                    db.ball.group.opacity = 1;
+                }
+                if (typeof db.origX === 'number' && typeof db.origY === 'number') {
+                    PT.placeBall(db.ball.num, db.origX, db.origY);
+                }
+                if (db.trail) {
+                    db.trail.remove();
+                    db.trail = null;
+                }
+            }
+        }
+        // Clean up trail paths
+        if (animState.cbTrail) { animState.cbTrail.remove(); animState.cbTrail = null; }
+        if (animState.obTrail) { animState.obTrail.remove(); animState.obTrail = null; }
+        animState = null;
+    }
+
+    function animateShot() {
+        // If already animating, stop and reset
+        if (animState) { stopAnimation(); return; }
+
+        var cue = balls[0];
+        if (!cue) return;
+
+        // Use the user's current aim line; do not auto-solve here.
+        var aim = PT.lastAimPoint;
+        if (!aim) {
+            clearShotLines();
+            showNoShotFeedback('SET AIM FIRST (DRAG FROM CUE BALL)');
+            return;
+        }
+
+        var aimDx = aim.x - cue.tableX;
+        var aimDy = aim.y - cue.tableY;
+        var aimLen = Math.sqrt(aimDx * aimDx + aimDy * aimDy);
+        if (aimLen < 0.1) {
+            clearShotLines();
+            showNoShotFeedback('SET AIM FIRST (DRAG FROM CUE BALL)');
+            return;
+        }
+
+        var aimAngle = Math.atan2(aimDy, aimDx);
+
+        // Use current overlay settings as the user's chosen strike.
+        var overlay = PT.cueOverlay || { tip: { x: 0, y: 0 }, power: 0.55 };
+        var tipX = (overlay.tip && typeof overlay.tip.x === 'number') ? overlay.tip.x : 0;
+        var tipY = (overlay.tip && typeof overlay.tip.y === 'number') ? overlay.tip.y : 0;
+        var power = (typeof overlay.power === 'number') ? overlay.power : 0.55;
+
+        // Identify the first OB on the user's aim line.
+        var targetHit = findTargetBall(cue.tableX, cue.tableY, aimDx, aimDy);
+        var targetBall = targetHit ? targetHit.ball : null;
+
+        var physics = PT.physics;
+        var sim = null;
+        var resultText = 'MISS';
+
+        if (targetBall) {
+            sim = physics.simulateShot(
+                cue.tableX, cue.tableY,
+                targetBall.tableX, targetBall.tableY,
+                aimAngle, tipX, tipY, power
+            );
+            if (!sim || !sim.hit) {
+                clearShotLines();
+                showNoShotFeedback('NO CONTACT');
+                return;
+            }
+            resultText = getPocketSummary(sim).text;
+        } else {
+            // No OB contact: animate cue ball only so user sees miss behavior.
+            var launch = physics.cueBallLaunch(tipX, tipY, power, aimAngle);
+            var cbOnly = physics.simulateRoll(cue.tableX, cue.tableY, launch.vx, launch.vy, launch.sidespin);
+            sim = {
+                hit: false,
+                ghostX: cue.tableX,
+                ghostY: cue.tableY,
+                ob: null,
+                cb: cbOnly
+            };
+            resultText = 'NO CONTACT';
+        }
+
+        // Build full cue ball path: pre-contact (straight line to ghost) + post-contact
+        var cbFullPath = [];
+        var pointDt = 0.02; // simulateRoll samples every 4 * 0.005s = 0.02s per point
+        var contactIdx = -1;
+        if (sim.hit) {
+            // Pre-contact: cue ball travels from start to ghost ball position
+            var launch = physics.cueBallLaunch(tipX, tipY, power, aimAngle);
+            var preDist = Math.sqrt(
+                (sim.ghostX - cue.tableX) * (sim.ghostX - cue.tableX) +
+                (sim.ghostY - cue.tableY) * (sim.ghostY - cue.tableY)
+            );
+            var preTime = preDist / Math.max(1, launch.speed);
+            var preSteps = Math.max(8, Math.round(preTime / pointDt));
+            for (var s = 0; s <= preSteps; s++) {
+                var t = s / preSteps;
+                cbFullPath.push({
+                    x: cue.tableX + (sim.ghostX - cue.tableX) * t,
+                    y: cue.tableY + (sim.ghostY - cue.tableY) * t
+                });
+            }
+            // Contact index — OB starts moving here
+            contactIdx = cbFullPath.length - 1;
+            // Post-contact
+            if (sim.cb && sim.cb.path.length > 0) {
+                for (var ci = 0; ci < sim.cb.path.length; ci++) {
+                    cbFullPath.push(sim.cb.path[ci]);
+                }
+            }
+        } else if (sim.cb && sim.cb.path.length > 0) {
+            // Cue-only simulation (no OB contact)
+            for (var cj = 0; cj < sim.cb.path.length; cj++) {
+                cbFullPath.push(sim.cb.path[cj]);
+            }
+            contactIdx = cbFullPath.length + 1; // OB never starts
+        }
+
+        // Build dynamic ball tracks from multi-ball simulation (or legacy OB fallback).
+        var dynamicBalls = [];
+
+        function buildPaddedPath(startX, startY, rawPath) {
+            var out = [];
+            for (var pad = 0; pad <= contactIdx; pad++) out.push({ x: startX, y: startY });
+            for (var rp = 0; rp < rawPath.length; rp++) out.push(rawPath[rp]);
+            return out;
+        }
+
+        if (sim.balls && sim.balls.paths) {
+            Object.keys(sim.balls.paths).forEach(function (id) {
+                if (id === '0') return;
+                var ballRef = (id === 'target') ? targetBall : balls[+id];
+                if (!ballRef || !ballRef.group) return;
+                var raw = sim.balls.paths[id] || [];
+                if (!raw.length) return;
+
+                var db = {
+                    id: id,
+                    ball: ballRef,
+                    origX: ballRef.tableX,
+                    origY: ballRef.tableY,
+                    path: buildPaddedPath(ballRef.tableX, ballRef.tableY, raw),
+                    pocketFrame: -1,
+                    hidden: false,
+                    trail: null
+                };
+                if (sim.balls.pocketed && sim.balls.pocketed[id]) {
+                    db.pocketFrame = contactIdx + raw.length - 1;
+                }
+                dynamicBalls.push(db);
+            });
+        } else if (targetBall) {
+            // Legacy OB path fallback
+            var rawOb = (sim.ob && sim.ob.path) ? sim.ob.path : [];
+            var legacyPath = buildPaddedPath(targetBall.tableX, targetBall.tableY, rawOb);
+            dynamicBalls.push({
+                id: 'target',
+                ball: targetBall,
+                origX: targetBall.tableX,
+                origY: targetBall.tableY,
+                path: legacyPath,
+                pocketFrame: (sim.ob && sim.ob.pocketed) ? (contactIdx + rawOb.length - 1) : -1,
+                hidden: false,
+                trail: null
+            });
+        }
+
+        // Equalize lengths (pad shorter paths with final positions)
+        var maxLen = cbFullPath.length;
+        for (var dbi = 0; dbi < dynamicBalls.length; dbi++) {
+            if (dynamicBalls[dbi].path.length > maxLen) maxLen = dynamicBalls[dbi].path.length;
+        }
+        var cbLast = cbFullPath[cbFullPath.length - 1] || { x: cue.tableX, y: cue.tableY };
+        while (cbFullPath.length < maxLen) cbFullPath.push(cbLast);
+        for (var dp = 0; dp < dynamicBalls.length; dp++) {
+            var dpath = dynamicBalls[dp].path;
+            var dlast = dpath[dpath.length - 1] || { x: dynamicBalls[dp].origX, y: dynamicBalls[dp].origY };
+            while (dpath.length < maxLen) dpath.push(dlast);
+        }
+
+        // Draw the shot lines first, preserving the user's chosen aim.
+        drawShotLines(cue.tableX, cue.tableY, aim.x, aim.y);
+
+        // Create trail paths
+        PT.shotLayer.activate();
+        var cbTrail = new paper.Path({
+            strokeColor: 'rgba(255,255,255,0.3)',
+            strokeWidth: S(0.06)
+        });
+        for (var dt = 0; dt < dynamicBalls.length; dt++) {
+            dynamicBalls[dt].trail = new paper.Path({
+                strokeColor: (dynamicBalls[dt].id === 'target') ? 'rgba(255,100,100,0.3)' : 'rgba(220,220,255,0.22)',
+                strokeWidth: S(0.06)
+            });
+        }
+
+        var simPocket = getPocketSummary(sim);
+
+        animState = {
+            cueBall: cue,
+            obBall: targetBall,
+            origCueX: cue.tableX,
+            origCueY: cue.tableY,
+            origObX: targetBall ? targetBall.tableX : null,
+            origObY: targetBall ? targetBall.tableY : null,
+            cbPath: cbFullPath,
+            obPath: null,
+            frame: 0,
+            frameCursor: 0,
+            maxFrame: maxLen,
+            pointDt: pointDt,
+            contactIdx: contactIdx,
+            obPocketFrame: -1,
+            obHidden: false,
+            cbTrail: cbTrail,
+            obTrail: null,
+            dynamicBalls: dynamicBalls,
+            pocketed: simPocket.hasPocket,
+            pocket: simPocket.text,
+            obPocketed: sim.ob && sim.ob.pocketed,
+            resultText: resultText
+        };
+    }
+
+    // Called every paper.view frame to advance animation
+    function animationTick(event) {
+        if (!animState) return;
+
+        var st = animState;
+        var delta = (event && typeof event.delta === 'number') ? event.delta : (1 / 60);
+        st.frameCursor += delta / st.pointDt;
+        var advanced = Math.min(Math.floor(st.frameCursor), st.maxFrame - 1);
+
+        if (advanced < st.frame) return;
+
+        for (var f = st.frame; f <= advanced; f++) {
+            var cbPt = st.cbPath[f];
+
+            // Move cue ball group
+            if (st.cueBall && st.cueBall.group) {
+                st.cueBall.group.position = T(cbPt.x, cbPt.y);
+                st.cueBall.tableX = cbPt.x;
+                st.cueBall.tableY = cbPt.y;
+            }
+
+            // Move all dynamic balls participating in this simulation.
+            if (st.dynamicBalls && st.dynamicBalls.length) {
+                for (var dbi = 0; dbi < st.dynamicBalls.length; dbi++) {
+                    var db = st.dynamicBalls[dbi];
+                    if (!db || !db.ball || !db.ball.group) continue;
+                    var dbPt = db.path[f];
+                    if (!dbPt) continue;
+
+                    if (!db.hidden) {
+                        if (db.pocketFrame >= 0 && f >= db.pocketFrame) {
+                            db.ball.group.visible = false;
+                            db.hidden = true;
+                        } else {
+                            db.ball.group.position = T(dbPt.x, dbPt.y);
+                            db.ball.tableX = dbPt.x;
+                            db.ball.tableY = dbPt.y;
+                        }
+                    }
+                }
+            }
+
+            // Add trail points (every few frames)
+            if (f % 2 === 0) {
+                st.cbTrail.add(T(cbPt.x, cbPt.y));
+                if (st.dynamicBalls && st.dynamicBalls.length) {
+                    for (var dti = 0; dti < st.dynamicBalls.length; dti++) {
+                        var dtBall = st.dynamicBalls[dti];
+                        if (!dtBall || !dtBall.trail || dtBall.hidden) continue;
+                        if (f >= st.contactIdx) {
+                            var tPt = dtBall.path[f];
+                            if (tPt) dtBall.trail.add(T(tPt.x, tPt.y));
+                        }
+                    }
+                }
+            }
+        }
+
+        st.frame = advanced + 1;
+
+        // Animation complete
+        if (st.frame >= st.maxFrame) {
+            // Show result label
+            PT.shotLayer.activate();
+            var fb = PT.getFeltBounds();
+            var statusText = st.resultText || (st.pocketed ? ('POCKETED: ' + st.pocket) : 'MISS');
+            new paper.PointText({
+                point: new paper.Point(fb.left + (fb.right - fb.left) * 0.5, fb.top + S(3)),
+                content: statusText,
+                fillColor: st.pocketed ? 'rgba(0,255,136,0.9)' : 'rgba(255,100,100,0.9)',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                fontSize: S(2),
+                justification: 'center'
+            });
+
+            // Pause briefly then reset
+            var captured = animState;
+            setTimeout(function () {
+                if (animState !== captured) return; // user already stopped it
+                stopAnimation();
+            }, 1500);
+        }
+    }
+
+    // Hook into Paper.js frame event
+    paper.view.on('frame', animationTick);
+
     // ── Exports ──
     PT.clearShotLines = clearShotLines;
     PT.hitBall = hitBall;
@@ -865,4 +1421,8 @@
     PT.drawNewDrillPanel = drawNewDrillPanel;
     PT.drawEditOverlayPreview = drawEditOverlayPreview;
     PT.editAdjust = editAdjust;
+    PT.autoSolve = autoSolve;
+    PT.animateShot = animateShot;
+    PT.stopAnimation = stopAnimation;
+    PT.isAnimating = isAnimating;
 })();

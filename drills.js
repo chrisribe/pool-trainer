@@ -20,7 +20,15 @@
     var drillListCatId = null;
     var menuCursor = 0;
     var menuItemCount = 0;
+    var menuPage = 0;
     var cueTargetGroup = null;
+    var physicsMenuItems = [
+        { label: 'Run Physics Tests', action: 'runPhysicsTests' },
+        { label: 'Run Cue Ball Tests', action: 'runCueBallPhysicsTests' },
+        { label: 'Run Collision Tests', action: 'runCollisionTransferTests' },
+        { label: 'Run Calibration', action: 'calibrate' },
+        { label: 'Run Full Phase Sweep', action: 'runAll' }
+    ];
 
     // ── Serialize / Load ──
 
@@ -293,6 +301,93 @@
         };
     }
 
+    function makeFrame(left, top, right, bottom) {
+        return {
+            left: left,
+            top: top,
+            right: right,
+            bottom: bottom,
+            width: right - left,
+            height: bottom - top,
+            cx: (left + right) / 2,
+            cy: (top + bottom) / 2
+        };
+    }
+
+    function insetFrame(frame, padX, padY) {
+        return makeFrame(
+            frame.left + padX,
+            frame.top + padY,
+            frame.right - padX,
+            frame.bottom - padY
+        );
+    }
+
+    function splitVertical(frame, topHeight, footerHeight) {
+        var bodyTop = frame.top + topHeight;
+        var bodyBottom = frame.bottom - footerHeight;
+        if (bodyBottom < bodyTop) bodyBottom = bodyTop;
+        return {
+            top: makeFrame(frame.left, frame.top, frame.right, bodyTop),
+            body: makeFrame(frame.left, bodyTop, frame.right, bodyBottom),
+            footer: makeFrame(frame.left, bodyBottom, frame.right, frame.bottom)
+        };
+    }
+
+    function buildLayoutContext() {
+        var felt = getFeltBounds();
+        var root = makeFrame(felt.left, felt.top, felt.right, felt.bottom);
+        var minSide = Math.min(root.width, root.height);
+        var safe = insetFrame(root, root.width * 0.05, root.height * 0.04);
+        var tokens = {
+            titleSize: minSide * 0.06,
+            subtitleSize: minSide * 0.025,
+            hintSize: minSide * 0.02,
+            menuBtnW: Math.min(root.width * 0.6, 400),
+            menuBtnH: Math.min(root.height * 0.07, 50),
+            listBtnW: Math.min(root.width * 0.65, 450),
+            listBtnH: Math.min(root.height * 0.06, 44),
+            menuGap: Math.min(root.height * 0.07, 50) * 0.35,
+            listGap: Math.min(root.height * 0.06, 44) * 0.25,
+            radius: 8,
+            bulletSizeMul: 0.4
+        };
+        return {
+            felt: root,
+            safe: safe,
+            tokens: tokens
+        };
+    }
+
+    function getMenuPaginationFrame(ctx, btnH, gap) {
+        var startY = ctx.felt.top + ctx.felt.height * 0.24;
+        var hintY = ctx.felt.bottom - ctx.felt.height * 0.12;
+        var bottomY = hintY - btnH * 0.95;
+        return makeFrame(ctx.felt.left, startY, ctx.felt.right, bottomY);
+    }
+
+    function getPerPage(frame, itemH, gap) {
+        var step = itemH + gap;
+        return Math.max(1, Math.floor(frame.height / step));
+    }
+
+    function getMenuPagingMetrics() {
+        var ctx = buildLayoutContext();
+        var btnH = ctx.tokens.menuBtnH;
+        var gap = ctx.tokens.menuGap;
+        var frame = getMenuPaginationFrame(ctx, btnH, gap);
+        return {
+            perPage: getPerPage(frame, btnH, gap)
+        };
+    }
+
+    function alignX(frame, width, mode, inset) {
+        inset = inset || 0;
+        if (mode === 'left') return frame.left + inset;
+        if (mode === 'right') return frame.right - width - inset;
+        return frame.cx - width / 2;
+    }
+
     function showMenu() {
         PT.appMode = 'menu';
         PT.clearBalls();
@@ -301,167 +396,344 @@
         PT.uiLayer.removeChildren();
         PT.uiLayer.activate();
 
-        var fb = getFeltBounds();
-        var fw = fb.right - fb.left;
-        var fh = fb.bottom - fb.top;
-        var cx = (fb.left + fb.right) / 2;
+        var ctx = buildLayoutContext();
+        var tokens = ctx.tokens;
+        var felt = ctx.felt;
 
-        // Title
         new paper.PointText({
-            point: new paper.Point(cx, fb.top + fh * 0.1),
+            point: new paper.Point(felt.cx, felt.top + felt.height * 0.1),
             content: 'POOL TRAINER',
             fillColor: '#ffffff',
             fontFamily: 'Arial, sans-serif',
             fontWeight: 'bold',
-            fontSize: Math.min(fw, fh) * 0.06,
+            fontSize: tokens.titleSize,
             justification: 'center'
         });
 
-        // Subtitle
         new paper.PointText({
-            point: new paper.Point(cx, fb.top + fh * 0.16),
+            point: new paper.Point(felt.cx, felt.top + felt.height * 0.16),
             content: 'Select a drill category',
             fillColor: 'rgba(255,255,255,0.5)',
             fontFamily: 'Arial, sans-serif',
-            fontSize: Math.min(fw, fh) * 0.025,
+            fontSize: tokens.subtitleSize,
             justification: 'center'
         });
 
-        // Category buttons
         var catalog = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
-        var btnW = Math.min(fw * 0.6, 400);
-        var btnH = Math.min(fh * 0.07, 50);
-        var gap = btnH * 0.35;
-        var startY = fb.top + fh * 0.24;
+        var btnW = tokens.menuBtnW;
+        var btnH = tokens.menuBtnH;
+        var gap = tokens.menuGap;
+        var listFrame = getMenuPaginationFrame(ctx, btnH, gap);
+        var startY = listFrame.top;
+        var itemStep = btnH + gap;
+        var perPage = getPerPage(listFrame, btnH, gap);
 
-        // Resume item when drills are active
-        var hasResume = !!(activeDrills && activeDrills.length);
-        var resumeOffset = 0;
-        if (hasResume) {
-            resumeOffset = 1;
-            var rY = startY;
-            var rSelected = (menuCursor === 0);
+        var items = [];
+        if (activeDrills && activeDrills.length) {
             var drill = activeDrills[activeDrillIdx];
-            var rLabel = '\u25b6 Resume: ' + drill.name + '  (' + (activeDrillIdx + 1) + '/' + activeDrills.length + ')';
-            new paper.Path.Rectangle({
-                from: new paper.Point(cx - btnW / 2, rY),
-                to: new paper.Point(cx + btnW / 2, rY + btnH),
-                radius: 8,
-                fillColor: rSelected ? 'rgba(0,255,100,0.2)' : 'rgba(0,255,100,0.08)',
-                strokeColor: rSelected ? '#00ff66' : 'rgba(0,255,100,0.4)',
-                strokeWidth: rSelected ? 2 : 1
-            }).data = { action: 'resume' };
-            new paper.PointText({
-                point: new paper.Point(cx, rY + btnH * 0.65),
-                content: rLabel,
-                fillColor: '#00ff66',
-                fontFamily: 'Arial, sans-serif',
-                fontWeight: 'bold',
-                fontSize: btnH * 0.35,
-                justification: 'center'
-            }).data = { action: 'resume' };
-            if (rSelected) {
-                new paper.PointText({
-                    point: new paper.Point(cx - btnW / 2 - btnH * 0.4, rY + btnH * 0.65),
-                    content: '\u25b6',
-                    fillColor: '#00ff66',
-                    fontFamily: 'Arial, sans-serif',
-                    fontSize: btnH * 0.4,
-                    justification: 'center'
-                });
-            }
-            startY += btnH + gap * 2;
+            items.push({
+                action: 'resume',
+                label: '\u25b6 Resume: ' + drill.name + '  (' + (activeDrillIdx + 1) + '/' + activeDrills.length + ')',
+                fill: 'rgba(0,255,100,0.2)',
+                fillIdle: 'rgba(0,255,100,0.08)',
+                stroke: '#00ff66',
+                strokeIdle: 'rgba(0,255,100,0.4)',
+                text: '#00ff66'
+            });
         }
 
-        // Total items = resume? + categories + free play
-        menuItemCount = resumeOffset + catalog.length + 1;
+        catalog.forEach(function (cat) {
+            items.push({
+                action: 'category',
+                categoryId: cat.id,
+                label: cat.icon + '  ' + cat.name,
+                fill: 'rgba(255,255,255,0.18)',
+                fillIdle: 'rgba(255,255,255,0.08)',
+                stroke: '#ffffff',
+                strokeIdle: 'rgba(255,255,255,0.3)',
+                text: '#ffffff'
+            });
+        });
+
+        items.push({
+            action: 'freeplay',
+            label: '\ud83c\udfb1  Free Play',
+            fill: 'rgba(0,229,255,0.2)',
+            fillIdle: 'rgba(0,229,255,0.1)',
+            stroke: '#00e5ff',
+            strokeIdle: 'rgba(0,229,255,0.4)',
+            text: '#00e5ff'
+        });
+
+        items.push({
+            action: 'physicsTests',
+            label: '\u2699\ufe0f  Physics Tests',
+            fill: 'rgba(255,200,0,0.22)',
+            fillIdle: 'rgba(255,200,0,0.1)',
+            stroke: '#ffd84a',
+            strokeIdle: 'rgba(255,216,74,0.45)',
+            text: '#ffd84a'
+        });
+
+        menuItemCount = items.length;
+        if (menuItemCount < 1) menuItemCount = 1;
         if (menuCursor >= menuItemCount) menuCursor = menuItemCount - 1;
         if (menuCursor < 0) menuCursor = 0;
 
-        catalog.forEach(function (cat, i) {
-            var y = startY + i * (btnH + gap);
-            var isSelected = ((i + resumeOffset) === menuCursor);
+        var totalPages = Math.max(1, Math.ceil(items.length / perPage));
+        menuPage = Math.max(0, Math.min(totalPages - 1, menuPage));
+        var pageStart = menuPage * perPage;
+        var pageEnd = Math.min(pageStart + perPage, items.length);
+
+        if (menuCursor < pageStart || menuCursor >= pageEnd) {
+            menuCursor = pageStart;
+        }
+
+        for (var i = pageStart; i < pageEnd; i++) {
+            var row = i - pageStart;
+            var y = startY + row * itemStep;
+            var item = items[i];
+            var selected = (i === menuCursor);
 
             var btn = new paper.Path.Rectangle({
-                from: new paper.Point(cx - btnW / 2, y),
-                to: new paper.Point(cx + btnW / 2, y + btnH),
-                radius: 8,
-                fillColor: isSelected ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)',
-                strokeColor: isSelected ? '#ffffff' : 'rgba(255,255,255,0.3)',
-                strokeWidth: isSelected ? 2 : 1
+                from: new paper.Point(alignX(felt, btnW, 'center'), y),
+                to: new paper.Point(alignX(felt, btnW, 'center') + btnW, y + btnH),
+                radius: tokens.radius,
+                fillColor: selected ? item.fill : item.fillIdle,
+                strokeColor: selected ? item.stroke : item.strokeIdle,
+                strokeWidth: selected ? 2 : 1
             });
-            btn.data = { action: 'category', categoryId: cat.id };
+            btn.data = { action: item.action, categoryId: item.categoryId };
 
             var label = new paper.PointText({
-                point: new paper.Point(cx, y + btnH * 0.65),
-                content: cat.icon + '  ' + cat.name,
-                fillColor: '#ffffff',
+                point: new paper.Point(felt.cx, y + btnH * 0.65),
+                content: item.label,
+                fillColor: item.text,
                 fontFamily: 'Arial, sans-serif',
                 fontWeight: 'bold',
                 fontSize: btnH * 0.4,
                 justification: 'center'
             });
-            label.data = { action: 'category', categoryId: cat.id };
+            label.data = { action: item.action, categoryId: item.categoryId };
 
-            if (isSelected) {
+            if (selected) {
                 new paper.PointText({
-                    point: new paper.Point(cx - btnW / 2 - btnH * 0.4, y + btnH * 0.65),
+                    point: new paper.Point(alignX(felt, btnW, 'center') - btnH * 0.4, y + btnH * 0.65),
                     content: '\u25b6',
-                    fillColor: '#ffffff',
+                    fillColor: item.text,
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * tokens.bulletSizeMul,
+                    justification: 'center'
+                });
+            }
+        }
+
+        var hintY = felt.bottom - felt.height * 0.12;
+
+        if (totalPages > 1) {
+            var rowsShown = Math.max(0, pageEnd - pageStart);
+            var navY = startY + rowsShown * itemStep + gap * 0.15;
+            var navBottomLimit = hintY - btnH * 0.95 - gap * 0.25;
+            if (navY > navBottomLimit) navY = navBottomLimit;
+            var navBtnW = btnH * 1.3;
+            var navTextW = btnH * 2.0;
+
+            if (menuPage > 0) {
+                var prevX = felt.cx - navTextW / 2 - navBtnW;
+                new paper.Path.Rectangle({
+                    from: new paper.Point(prevX, navY),
+                    to: new paper.Point(prevX + navBtnW, navY + btnH * 0.82),
+                    radius: 6,
+                    fillColor: 'rgba(255,255,255,0.05)',
+                    strokeColor: 'rgba(255,255,255,0.25)',
+                    strokeWidth: 1
+                }).data = { action: 'menuPrevPage' };
+                new paper.PointText({
+                    point: new paper.Point(prevX + navBtnW / 2, navY + btnH * 0.56),
+                    content: '\u25c0',
+                    fillColor: 'rgba(255,255,255,0.75)',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.36,
+                    justification: 'center'
+                }).data = { action: 'menuPrevPage' };
+            }
+
+            new paper.PointText({
+                point: new paper.Point(felt.cx, navY + btnH * 0.56),
+                content: (menuPage + 1) + ' / ' + totalPages,
+                fillColor: 'rgba(255,255,255,0.45)',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: btnH * 0.3,
+                justification: 'center'
+            });
+
+            if (menuPage < totalPages - 1) {
+                var nextX = felt.cx + navTextW / 2;
+                new paper.Path.Rectangle({
+                    from: new paper.Point(nextX, navY),
+                    to: new paper.Point(nextX + navBtnW, navY + btnH * 0.82),
+                    radius: 6,
+                    fillColor: 'rgba(255,255,255,0.05)',
+                    strokeColor: 'rgba(255,255,255,0.25)',
+                    strokeWidth: 1
+                }).data = { action: 'menuNextPage' };
+                new paper.PointText({
+                    point: new paper.Point(nextX + navBtnW / 2, navY + btnH * 0.56),
+                    content: '\u25b6',
+                    fillColor: 'rgba(255,255,255,0.75)',
+                    fontFamily: 'Arial, sans-serif',
+                    fontSize: btnH * 0.36,
+                    justification: 'center'
+                }).data = { action: 'menuNextPage' };
+            }
+        }
+
+        new paper.PointText({
+            point: new paper.Point(felt.cx, hintY),
+            content: '\u2191\u2193 Navigate   \u25c0\u25b6 Page   Enter Select   F Fullscreen   P Projection   K Calibrate',
+            fillColor: 'rgba(255,255,255,0.25)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: tokens.hintSize,
+            justification: 'center'
+        });
+
+        PT.qrLayer.visible = true;
+    }
+
+    function runPhysicsMenuAction(action) {
+        function safeRun(fnName) {
+            if (typeof PT[fnName] === 'function') {
+                try {
+                    PT[fnName]();
+                    return true;
+                } catch (err) {
+                    console.error('Physics menu action failed:', fnName, err);
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        if (action === 'runAll') {
+            safeRun('runPhysicsTests');
+            safeRun('runCueBallPhysicsTests');
+            safeRun('runCollisionTransferTests');
+            safeRun('calibrate');
+            return;
+        }
+
+        safeRun(action);
+    }
+
+    function showPhysicsTestsMenu() {
+        PT.qrLayer.visible = false;
+        PT.qrLayer.removeChildren();
+        hideCueTarget();
+        PT.uiLayer.removeChildren();
+        PT.uiLayer.activate();
+
+        PT.appMode = 'physicsTests';
+
+        var ctx = buildLayoutContext();
+        var tokens = ctx.tokens;
+        var felt = ctx.felt;
+
+        new paper.PointText({
+            point: new paper.Point(felt.cx, felt.top + felt.height * 0.1),
+            content: 'PHYSICS TESTS',
+            fillColor: '#ffd84a',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: tokens.titleSize * 0.92,
+            justification: 'center'
+        });
+
+        new paper.PointText({
+            point: new paper.Point(felt.cx, felt.top + felt.height * 0.155),
+            content: 'Run test phases quickly (results in browser console)',
+            fillColor: 'rgba(255,255,255,0.55)',
+            fontFamily: 'Arial, sans-serif',
+            fontSize: tokens.subtitleSize * 0.88,
+            justification: 'center'
+        });
+
+        var btnW = Math.min(felt.width * 0.62, 430);
+        var btnH = tokens.menuBtnH;
+        var gap = tokens.menuGap;
+        var startY = felt.top + felt.height * 0.24;
+
+        menuItemCount = physicsMenuItems.length + 1;
+        if (menuCursor >= menuItemCount) menuCursor = menuItemCount - 1;
+        if (menuCursor < 0) menuCursor = 0;
+
+        for (var i = 0; i < physicsMenuItems.length; i++) {
+            var item = physicsMenuItems[i];
+            var y = startY + i * (btnH + gap);
+            var selected = (menuCursor === i);
+
+            var btn = new paper.Path.Rectangle({
+                from: new paper.Point(alignX(felt, btnW, 'center'), y),
+                to: new paper.Point(alignX(felt, btnW, 'center') + btnW, y + btnH),
+                radius: tokens.radius,
+                fillColor: selected ? 'rgba(255,216,74,0.2)' : 'rgba(255,255,255,0.07)',
+                strokeColor: selected ? '#ffd84a' : 'rgba(255,255,255,0.25)',
+                strokeWidth: selected ? 2 : 1
+            });
+            btn.data = { action: 'physicsAction', testAction: item.action };
+
+            new paper.PointText({
+                point: new paper.Point(felt.cx, y + btnH * 0.65),
+                content: item.label,
+                fillColor: selected ? '#ffd84a' : '#ffffff',
+                fontFamily: 'Arial, sans-serif',
+                fontWeight: 'bold',
+                fontSize: btnH * 0.36,
+                justification: 'center'
+            }).data = { action: 'physicsAction', testAction: item.action };
+
+            if (selected) {
+                new paper.PointText({
+                    point: new paper.Point(alignX(felt, btnW, 'center') - btnH * 0.4, y + btnH * 0.65),
+                    content: '\u25b6',
+                    fillColor: '#ffd84a',
                     fontFamily: 'Arial, sans-serif',
                     fontSize: btnH * 0.4,
                     justification: 'center'
                 });
             }
-        });
-
-        // Free play button
-        var fpIdx = resumeOffset + catalog.length;
-        var fpY = startY + catalog.length * (btnH + gap) + gap;
-        var fpSelected = (menuCursor === fpIdx);
-        var fpBtn = new paper.Path.Rectangle({
-            from: new paper.Point(cx - btnW / 2, fpY),
-            to: new paper.Point(cx + btnW / 2, fpY + btnH),
-            radius: 8,
-            fillColor: fpSelected ? 'rgba(0,229,255,0.2)' : 'rgba(0,229,255,0.1)',
-            strokeColor: fpSelected ? '#00e5ff' : 'rgba(0,229,255,0.4)',
-            strokeWidth: fpSelected ? 2 : 1
-        });
-        fpBtn.data = { action: 'freeplay' };
-
-        new paper.PointText({
-            point: new paper.Point(cx, fpY + btnH * 0.65),
-            content: '\ud83c\udfb1  Free Play',
-            fillColor: '#00e5ff',
-            fontFamily: 'Arial, sans-serif',
-            fontWeight: 'bold',
-            fontSize: btnH * 0.4,
-            justification: 'center'
-        }).data = { action: 'freeplay' };
-
-        if (fpSelected) {
-            new paper.PointText({
-                point: new paper.Point(cx - btnW / 2 - btnH * 0.4, fpY + btnH * 0.65),
-                content: '\u25b6',
-                fillColor: '#00e5ff',
-                fontFamily: 'Arial, sans-serif',
-                fontSize: btnH * 0.4,
-                justification: 'center'
-            });
         }
 
-        // Keyboard hint
+        var backY = startY + physicsMenuItems.length * (btnH + gap) + gap;
+        var backSelected = (menuCursor === physicsMenuItems.length);
+
+        var backBtn = new paper.Path.Rectangle({
+            from: new paper.Point(alignX(felt, btnW, 'center'), backY),
+            to: new paper.Point(alignX(felt, btnW, 'center') + btnW, backY + btnH),
+            radius: tokens.radius,
+            fillColor: backSelected ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.05)',
+            strokeColor: backSelected ? '#ffffff' : 'rgba(255,255,255,0.25)',
+            strokeWidth: backSelected ? 2 : 1
+        });
+        backBtn.data = { action: 'backToMenu' };
+
         new paper.PointText({
-            point: new paper.Point(cx, fb.bottom - fh * 0.12),
-            content: '\u2191\u2193 Navigate   Enter Select   F Fullscreen   P Projection   K Calibrate',
+            point: new paper.Point(felt.cx, backY + btnH * 0.65),
+            content: '\u2190 Back to Main Menu',
+            fillColor: backSelected ? '#ffffff' : 'rgba(255,255,255,0.8)',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: btnH * 0.34,
+            justification: 'center'
+        }).data = { action: 'backToMenu' };
+
+        new paper.PointText({
+            point: new paper.Point(felt.cx, felt.bottom - felt.height * 0.12),
+            content: '\u2191\u2193 or P/N Navigate   Enter Select   Esc Back',
             fillColor: 'rgba(255,255,255,0.25)',
             fontFamily: 'Arial, sans-serif',
-            fontSize: Math.min(fw, fh) * 0.02,
+            fontSize: tokens.hintSize,
             justification: 'center'
         });
-
-        // Show QR layer
-        PT.qrLayer.visible = true;
     }
 
     function enterMenu() {
@@ -492,27 +764,26 @@
             PT.uiLayer.removeChildren();
             PT.uiLayer.activate();
 
-            var fb = getFeltBounds();
-            var fw = fb.right - fb.left;
-            var fh = fb.bottom - fb.top;
-            var cx = (fb.left + fb.right) / 2;
+            var ctx = buildLayoutContext();
+            var tokens = ctx.tokens;
+            var felt = ctx.felt;
+            var frames = splitVertical(felt, felt.height * 0.16, felt.height * 0.14);
 
-            var titleH = fh * 0.1;
             new paper.PointText({
-                point: new paper.Point(cx, fb.top + titleH),
+                point: new paper.Point(felt.cx, frames.top.top + frames.top.height * 0.62),
                 content: cat.icon + ' ' + cat.name,
                 fillColor: '#ffffff',
                 fontFamily: 'Arial, sans-serif',
                 fontWeight: 'bold',
-                fontSize: Math.min(fw, fh) * 0.04,
+                fontSize: tokens.titleSize * 0.66,
                 justification: 'center'
             });
 
-            var btnW = Math.min(fw * 0.65, 450);
-            var btnH = Math.min(fh * 0.06, 44);
-            var gap = btnH * 0.25;
-            var listTop = fb.top + titleH + fh * 0.04;
-            var listBottom = fb.bottom - fh * 0.12;
+            var btnW = tokens.listBtnW;
+            var btnH = tokens.listBtnH;
+            var gap = tokens.listGap;
+            var listTop = frames.body.top + gap * 0.2;
+            var listBottom = frames.body.bottom;
             var available = listBottom - listTop;
             var itemH = btnH + gap;
             var perPage = Math.max(1, Math.floor(available / itemH));
@@ -531,8 +802,8 @@
                 var emptyY = listTop;
                 var emptySelected = (menuCursor === 0);
                 var emptyBtn = new paper.Path.Rectangle({
-                    from: new paper.Point(cx - btnW / 2, emptyY),
-                    to: new paper.Point(cx + btnW / 2, emptyY + btnH),
+                    from: new paper.Point(alignX(felt, btnW, 'center'), emptyY),
+                    to: new paper.Point(alignX(felt, btnW, 'center') + btnW, emptyY + btnH),
                     radius: 6,
                     fillColor: emptySelected ? 'rgba(0,229,255,0.16)' : 'rgba(0,229,255,0.08)',
                     strokeColor: emptySelected ? '#00e5ff' : 'rgba(0,229,255,0.4)',
@@ -542,7 +813,7 @@
 
                 if (emptySelected) {
                     new paper.PointText({
-                        point: new paper.Point(cx - btnW / 2 - btnH * 0.35, emptyY + btnH * 0.65),
+                        point: new paper.Point(alignX(felt, btnW, 'center') - btnH * 0.35, emptyY + btnH * 0.65),
                         content: '\u25b6',
                         fillColor: '#00e5ff',
                         fontFamily: 'Arial, sans-serif',
@@ -552,7 +823,7 @@
                 }
 
                 new paper.PointText({
-                    point: new paper.Point(cx, emptyY + btnH * 0.65),
+                    point: new paper.Point(felt.cx, emptyY + btnH * 0.65),
                     content: 'Create New Drill',
                     fillColor: '#00e5ff',
                     fontFamily: 'Arial, sans-serif',
@@ -562,7 +833,7 @@
                 }).data = { action: 'newCustomDrill' };
 
                 new paper.PointText({
-                    point: new paper.Point(cx, emptyY + btnH * 1.7),
+                    point: new paper.Point(felt.cx, emptyY + btnH * 1.7),
                     content: 'No custom drills yet',
                     fillColor: 'rgba(255,255,255,0.4)',
                     fontFamily: 'Arial, sans-serif',
@@ -580,8 +851,8 @@
                     for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '\u2605' : '\u2606';
 
                     var btn = new paper.Path.Rectangle({
-                        from: new paper.Point(cx - btnW / 2, y),
-                        to: new paper.Point(cx + btnW / 2, y + btnH),
+                        from: new paper.Point(alignX(felt, btnW, 'center'), y),
+                        to: new paper.Point(alignX(felt, btnW, 'center') + btnW, y + btnH),
                         radius: 6,
                         fillColor: isSelected ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)',
                         strokeColor: isSelected ? '#ffffff' : 'rgba(255,255,255,0.2)',
@@ -591,7 +862,7 @@
 
                     if (isSelected) {
                         new paper.PointText({
-                            point: new paper.Point(cx - btnW / 2 - btnH * 0.35, y + btnH * 0.65),
+                            point: new paper.Point(alignX(felt, btnW, 'center') - btnH * 0.35, y + btnH * 0.65),
                             content: '\u25b6',
                             fillColor: '#ffffff',
                             fontFamily: 'Arial, sans-serif',
@@ -601,7 +872,7 @@
                     }
 
                     new paper.PointText({
-                        point: new paper.Point(cx - btnW * 0.42, y + btnH * 0.65),
+                        point: new paper.Point(felt.cx - btnW * 0.42, y + btnH * 0.65),
                         content: drill.name,
                         fillColor: '#ffffff',
                         fontFamily: 'Arial, sans-serif',
@@ -610,7 +881,7 @@
                     }).data = { action: 'loadDrill', drillIdx: j };
 
                     new paper.PointText({
-                        point: new paper.Point(cx + btnW * 0.42, y + btnH * 0.65),
+                        point: new paper.Point(felt.cx + btnW * 0.42, y + btnH * 0.65),
                         content: stars,
                         fillColor: '#ffee00',
                         fontFamily: 'Arial, sans-serif',
@@ -621,12 +892,12 @@
             }
 
             // Bottom row: [Back]  [◀ page ▶]
-            var botY = fb.bottom - fh * 0.08;
+            var botY = frames.footer.top + frames.footer.height * 0.2;
             var navBtnW = btnH * 1.2;
             var backW = btnW * 0.3;
             var backSelected = (menuCursor === pageItems);
 
-            var bkL = cx - btnW / 2;
+            var bkL = alignX(felt, btnW, 'center');
             var backBtn = new paper.Path.Rectangle({
                 from: new paper.Point(bkL, botY),
                 to: new paper.Point(bkL + backW, botY + btnH),
@@ -658,7 +929,7 @@
             }
 
             if (totalPages > 1) {
-                var navR = cx + btnW / 2;
+                var navR = alignX(felt, btnW, 'center') + btnW;
                 var pgTextW = btnH * 1.8;
 
                 if (pg < totalPages - 1) {
@@ -722,23 +993,20 @@
         PT.uiLayer.removeChildren();
         PT.uiLayer.activate();
 
-        var rail = cfg.railWidth;
-        var pw = cfg.playWidth;
-        var ph = cfg.playHeight;
-        var c1 = T(rail, rail);
-        var c2 = T(rail + pw, rail + ph);
-        var sL = Math.min(c1.x, c2.x);
-        var sR = Math.max(c1.x, c2.x);
-        var sT = Math.min(c1.y, c2.y);
-        var sB = Math.max(c1.y, c2.y);
+        var ctx = buildLayoutContext();
+        var felt = ctx.felt;
         var margin = S(2);
         var fs = S(1.4);
+        var leftX = felt.left + margin;
+        var rightX = felt.right - margin;
+        var topY = felt.top + margin;
+        var bottomY = felt.bottom - margin;
 
         if (!activeDrills || !activeDrills[activeDrillIdx]) {
             // Free play — show minimal hint
             new paper.PointText({
-                point: new paper.Point((sL + sR) / 2, sB - margin),
-                content: 'N Save as Drill    M Menu    E Edit    F Fullscreen    P Projection    K Calibrate    Del Remove Ball    Tap Trash',
+                point: new paper.Point(felt.cx, bottomY),
+                content: 'A Auto Solve    Shift+A Animate    N Save as Drill    M Menu    E Edit    F Fullscreen    P Projection    K Calibrate    Del Remove Ball    Tap Trash',
                 fillColor: 'rgba(255,255,255,0.2)',
                 fontFamily: 'Arial, sans-serif',
                 fontSize: fs * 0.55,
@@ -747,8 +1015,9 @@
             return;
         }
 
-        var drill = activeDrills[activeDrillIdx];        new paper.PointText({
-            point: new paper.Point(sL + margin, sT + margin + fs),
+        var drill = activeDrills[activeDrillIdx];
+        new paper.PointText({
+            point: new paper.Point(leftX, topY + fs),
             content: drill.name,
             fillColor: '#ffffff',
             fontFamily: 'Arial, sans-serif',
@@ -757,10 +1026,10 @@
             justification: 'left'
         });
 
-        var infoY = sT + margin + fs * 2.0;
+        var infoY = topY + fs * 2.0;
         if (activeCategory) {
             new paper.PointText({
-                point: new paper.Point(sL + margin, infoY),
+                point: new paper.Point(leftX, infoY),
                 content: 'Category: ' + activeCategory,
                 fillColor: 'rgba(255,255,255,0.35)',
                 fontFamily: 'Arial, sans-serif',
@@ -772,7 +1041,7 @@
 
         if (drill.description) {
             new paper.PointText({
-                point: new paper.Point(sL + margin, infoY + fs * 0.9),
+                point: new paper.Point(leftX, infoY + fs * 0.9),
                 content: drill.description,
                 fillColor: 'rgba(255,255,255,0.4)',
                 fontFamily: 'Arial, sans-serif',
@@ -782,7 +1051,7 @@
         }
 
         new paper.PointText({
-            point: new paper.Point(sR - margin, sT + margin + fs),
+            point: new paper.Point(rightX, topY + fs),
             content: (activeDrillIdx + 1) + ' / ' + activeDrills.length,
             fillColor: 'rgba(255,255,255,0.6)',
             fontFamily: 'Arial, sans-serif',
@@ -793,7 +1062,7 @@
 
         if (activeCategory) {
             new paper.PointText({
-                point: new paper.Point(sR - margin, sT + margin + fs * 2.5),
+                point: new paper.Point(rightX, topY + fs * 2.5),
                 content: activeCategory,
                 fillColor: 'rgba(255,255,255,0.3)',
                 fontFamily: 'Arial, sans-serif',
@@ -805,7 +1074,7 @@
         var stars = '';
         for (var s = 0; s < 5; s++) stars += s < drill.difficulty ? '\u2605' : '\u2606';
         new paper.PointText({
-            point: new paper.Point(sR - margin, sT + margin + fs * 3.8),
+            point: new paper.Point(rightX, topY + fs * 3.8),
             content: stars,
             fillColor: '#ffee00',
             fontFamily: 'Arial, sans-serif',
@@ -814,8 +1083,8 @@
         });
 
         new paper.PointText({
-            point: new paper.Point((sL + sR) / 2, sB - margin),
-            content: '\u2192 Next    \u2190 Prev    M Menu    E Edit    N New    F Fullscreen    P Projection    K Calibrate    Del Remove Ball    Tap Trash',
+            point: new paper.Point(felt.cx, bottomY),
+            content: '\u2192 Next    \u2190 Prev    A Auto Solve    Shift+A Animate    M Menu    E Edit    N New    F Fullscreen    P Projection    K Calibrate    Del Remove Ball    Tap Trash',
             fillColor: 'rgba(255,255,255,0.2)',
             fontFamily: 'Arial, sans-serif',
             fontSize: fs * 0.55,
@@ -869,36 +1138,84 @@
     // ── Menu cursor navigation ──
 
     function menuNav(dir) {
-        if (PT.appMode !== 'menu' && PT.appMode !== 'drillList') return;
+        if (PT.appMode !== 'menu' && PT.appMode !== 'drillList' && PT.appMode !== 'physicsTests') return;
         if (dir === 'up') {
             menuCursor = Math.max(0, menuCursor - 1);
         } else if (dir === 'down') {
             menuCursor = Math.min(menuItemCount - 1, menuCursor + 1);
         }
+        if (PT.appMode === 'menu') {
+            var metrics = getMenuPagingMetrics();
+            menuPage = Math.floor(menuCursor / metrics.perPage);
+        }
         if (PT.appMode === 'menu') showMenu();
         else if (PT.appMode === 'drillList') showDrillList(drillListCatId, drillListPage);
+        else if (PT.appMode === 'physicsTests') showPhysicsTestsMenu();
+        PT.sendRemoteStatus();
+    }
+
+    function menuPageNav(dir) {
+        if (PT.appMode !== 'menu') return;
+
+        var metrics = getMenuPagingMetrics();
+        var totalPages = Math.max(1, Math.ceil(menuItemCount / metrics.perPage));
+
+        if (dir === 'prev') menuPage = Math.max(0, menuPage - 1);
+        else if (dir === 'next') menuPage = Math.min(totalPages - 1, menuPage + 1);
+
+        menuCursor = Math.max(0, Math.min(menuItemCount - 1, menuPage * metrics.perPage));
+        showMenu();
         PT.sendRemoteStatus();
     }
 
     function menuSelect() {
         if (PT.appMode === 'menu') {
             var catalog = (typeof DRILL_CATALOG !== 'undefined') ? DRILL_CATALOG : [];
-            var hasResume = !!(activeDrills && activeDrills.length);
-            var resumeOffset = hasResume ? 1 : 0;
-            if (hasResume && menuCursor === 0) {
+            var idx = 0;
+            var selected = null;
+
+            if (activeDrills && activeDrills.length) {
+                if (menuCursor === idx) selected = { action: 'resume' };
+                idx++;
+            }
+
+            if (!selected) {
+                for (var c = 0; c < catalog.length; c++) {
+                    if (menuCursor === idx) {
+                        selected = { action: 'category', categoryId: catalog[c].id };
+                        break;
+                    }
+                    idx++;
+                }
+            }
+
+            if (!selected && menuCursor === idx) {
+                selected = { action: 'freeplay' };
+            }
+            idx++;
+
+            if (!selected && menuCursor === idx) {
+                selected = { action: 'physicsTests' };
+            }
+
+            if (!selected) {
+                PT.sendRemoteStatus();
+                return;
+            }
+
+            if (selected.action === 'resume') {
                 startDrill(activeDrillIdx);
                 PT.sendRemoteStatus();
                 return;
             }
-            var catIdx = menuCursor - resumeOffset;
-            if (catIdx < catalog.length) {
-                var catId = catalog[catIdx].id;
+
+            if (selected.action === 'category') {
                 PT.appMode = 'drillList';
                 PT.qrLayer.visible = false;
                 PT.qrLayer.removeChildren();
                 menuCursor = 0;
-                showDrillList(catId, 0);
-            } else if (catIdx === catalog.length) {
+                showDrillList(selected.categoryId, 0);
+            } else if (selected.action === 'freeplay') {
                 PT.appMode = 'drill';
                 PT.qrLayer.visible = false;
                 PT.qrLayer.removeChildren();
@@ -910,6 +1227,9 @@
                 PT.clearShotLines();
                 PT.uiLayer.removeChildren();
                 PT.rack9Ball();
+            } else if (selected.action === 'physicsTests') {
+                menuCursor = 0;
+                showPhysicsTestsMenu();
             }
         } else if (PT.appMode === 'drillList') {
             var drills = drillCache[drillListCatId];
@@ -931,12 +1251,24 @@
                 menuCursor = 0;
                 enterMenu();
             }
+        } else if (PT.appMode === 'physicsTests') {
+            if (menuCursor < physicsMenuItems.length) {
+                runPhysicsMenuAction(physicsMenuItems[menuCursor].action);
+                showPhysicsTestsMenu();
+            } else {
+                menuCursor = 0;
+                enterMenu();
+            }
         }
         PT.sendRemoteStatus();
     }
 
     function menuBack() {
         if (PT.appMode === 'drillList') {
+            menuCursor = 0;
+            enterMenu();
+        } else if (PT.appMode === 'physicsTests') {
+            if (PT.stopPhysicsVisualTests) PT.stopPhysicsVisualTests();
             menuCursor = 0;
             enterMenu();
         } else if (PT.appMode === 'drill') {
@@ -979,6 +1311,8 @@
     PT.fetchDrills = fetchDrills;
     PT.getFeltBounds = getFeltBounds;
     PT.showMenu = showMenu;
+    PT.showPhysicsTestsMenu = showPhysicsTestsMenu;
+    PT.runPhysicsMenuAction = runPhysicsMenuAction;
     PT.enterMenu = enterMenu;
     PT.showDrillList = showDrillList;
     PT.showDrillHUD = showDrillHUD;
@@ -991,6 +1325,7 @@
     PT.nextDrill = nextDrill;
     PT.prevDrill = prevDrill;
     PT.menuNav = menuNav;
+    PT.menuPageNav = menuPageNav;
     PT.menuSelect = menuSelect;
     PT.menuBack = menuBack;
     PT.hitUI = hitUI;

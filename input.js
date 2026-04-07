@@ -32,16 +32,26 @@
         }
 
         // Check UI layer first (menu buttons)
-        if (PT.appMode === 'menu' || PT.appMode === 'drillList') {
+        if (PT.appMode === 'menu' || PT.appMode === 'drillList' || PT.appMode === 'physicsTests') {
             var uiHit = PT.hitUI(event.point);
             if (uiHit) {
                 if (uiHit.action === 'category') {
                     PT.appMode = 'drillList';
                     PT.showDrillList(uiHit.categoryId, 0);
+                } else if (uiHit.action === 'physicsTests') {
+                    if (PT.showPhysicsTestsMenu) PT.showPhysicsTestsMenu();
+                } else if (uiHit.action === 'physicsAction') {
+                    if (PT.runPhysicsMenuAction) PT.runPhysicsMenuAction(uiHit.testAction);
+                    if (PT.showPhysicsTestsMenu) PT.showPhysicsTestsMenu();
+                    if (PT.sendRemoteStatus) PT.sendRemoteStatus();
                 } else if (uiHit.action === 'loadDrill') {
                     PT.startDrill(uiHit.drillIdx);
                 } else if (uiHit.action === 'backToMenu') {
                     PT.enterMenu();
+                } else if (uiHit.action === 'menuPrevPage') {
+                    if (PT.menuPageNav) PT.menuPageNav('prev');
+                } else if (uiHit.action === 'menuNextPage') {
+                    if (PT.menuPageNav) PT.menuPageNav('next');
                 } else if (uiHit.action === 'prevPage') {
                     PT.showDrillList(PT.drillListCatId, PT.drillListPage - 1);
                 } else if (uiHit.action === 'nextPage') {
@@ -252,18 +262,22 @@
             if (e.key === '9') { PT.activeDrills = null; PT.rack9Ball(); PT.showDrillHUD(); }
             if (e.key === '8') { PT.activeDrills = null; PT.rack8Ball(); PT.showDrillHUD(); }
             if (e.key === 'c' || e.key === 'C') PT.clearBalls();
+            if (e.key === 'a' && !e.shiftKey) PT.autoSolve();
+            if (e.key === 'A' && e.shiftKey) PT.animateShot();
             if (e.key === 'e' || e.key === 'E') PT.toggleEditMode();
             if (e.key === 'n' || e.key === 'N') {
                 // Enter edit mode then immediately start new drill flow
                 if (!PT.editMode) PT.toggleEditMode();
                 PT.enterNewDrillMode();
             }
-        } else if (PT.appMode === 'menu' || PT.appMode === 'drillList') {
+        } else if (PT.appMode === 'menu' || PT.appMode === 'drillList' || PT.appMode === 'physicsTests') {
             if (e.key === 'ArrowUp') { e.preventDefault(); PT.menuNav('up'); }
             if (e.key === 'ArrowDown') { e.preventDefault(); PT.menuNav('down'); }
+            if (e.key === 'p' || e.key === 'P') { e.preventDefault(); PT.menuNav('up'); }
+            if (e.key === 'n' || e.key === 'N') { e.preventDefault(); PT.menuNav('down'); }
             if (e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); PT.menuSelect(); }
             if (e.key === 'Escape' || e.key === 'ArrowLeft' || e.key === 'Backspace') {
-                if (PT.appMode === 'drillList') { e.preventDefault(); PT.menuBack(); }
+                if (PT.appMode === 'drillList' || PT.appMode === 'physicsTests') { e.preventDefault(); PT.menuBack(); }
             }
         }
     });

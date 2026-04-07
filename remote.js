@@ -86,8 +86,14 @@
             case 'down':       PT.menuNav('down'); return;
             case 'select':     PT.menuSelect(); return;
             case 'back':       PT.menuBack(); return;
-            case 'next':       PT.nextDrill(); break;
-            case 'prev':       PT.prevDrill(); break;
+            case 'next':
+                if (PT.appMode === 'menu' || PT.appMode === 'drillList' || PT.appMode === 'physicsTests') PT.menuNav('down');
+                else PT.nextDrill();
+                break;
+            case 'prev':
+                if (PT.appMode === 'menu' || PT.appMode === 'drillList' || PT.appMode === 'physicsTests') PT.menuNav('up');
+                else PT.prevDrill();
+                break;
             case 'menu':       PT.menuBack(); break;
             case 'edit':
                 if (PT.toggleEditMode) { PT.toggleEditMode(); }
@@ -179,6 +185,8 @@
             text = 'Free Play';
         } else if (PT.appMode === 'menu') {
             text = 'Menu';
+        } else if (PT.appMode === 'physicsTests') {
+            text = 'Physics Tests';
         } else if (PT.appMode === 'drillList') {
             text = PT.activeCategory || 'Drills';
         }

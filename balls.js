@@ -248,7 +248,7 @@
         var r  = cfg.ballRadius;
         var cx = rail + pw / 2;
         var footSpot = rail + ph * 0.25;
-        var d = r * 2.05;
+        var d = r * 2.0;
 
         var layout = [
             [0,  0,   1],
@@ -280,7 +280,7 @@
         var r  = cfg.ballRadius;
         var cx = rail + pw / 2;
         var footSpot = rail + ph * 0.25;
-        var d = r * 2.05;
+        var d = r * 2.0;
 
         var layout = [
             [0,  0,    1],

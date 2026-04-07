@@ -1,0 +1,481 @@
+[
+  {
+    "name": "Rail Cut vs Back Cut — Rail Shot",
+    "description": "Dr. Dave: The 9-ball rail cut is easier — the rail provides a visual line to the pocket, and the effective pocket size is larger at slow speeds. Compare this with the next drill.",
+    "difficulty": 2,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 9,
+        "x": 3,
+        "y": 35
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 25
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0
+      },
+      "power": 0.3
+    }
+  },
+  {
+    "name": "Rail Cut vs Back Cut — Back Cut",
+    "description": "Dr. Dave: The 13-ball back cut into a blind pocket is much harder — you look away from the pocket, which leads most people to overcut. Same angle and distance as the rail shot.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 13,
+        "x": 40,
+        "y": 35
+      }
+    ],
+    "aimLine": {
+      "x": 50,
+      "y": 25
+    }
+  },
+  {
+    "name": "Back Cut — Blind Side Pocket",
+    "description": "Dr. Dave: Back cuts into a blind side pocket are often overcut. Beginners who can't visualize the cut angle tend to hit too full. Better to overcut than undercut — if you don't cut enough, there's no chance for the ball to go in.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 65
+      },
+      {
+        "num": 1,
+        "x": 15,
+        "y": 50
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 50
+    }
+  },
+  {
+    "name": "Steep Back Cut — Overcut Over Undercut",
+    "description": "Dr. Dave: When the aiming line is well outside the edge of the object ball, beginners struggle. With shots like this, always overcut rather than undercut — an undercut has zero chance of going in.",
+    "difficulty": 4,
+    "balls": [
+      {
+        "num": 0,
+        "x": 30,
+        "y": 70
+      },
+      {
+        "num": 2,
+        "x": 38,
+        "y": 50
+      }
+    ],
+    "aimLine": {
+      "x": 50,
+      "y": 25
+    }
+  },
+  {
+    "name": "Contact Point Visualization",
+    "description": "Dr. Dave: Place your cue to imagine shooting the object ball directly into the pocket, then find the contact point on the ball. A striped ball's markings help you see it. Now visualize sending the cue ball to create that contact.",
+    "difficulty": 2,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 11,
+        "x": 14,
+        "y": 35
+      }
+    ],
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0
+      },
+      "power": 1
+    },
+    "aimLine": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  {
+    "name": "See the Angle — Long Back Cut",
+    "description": "Dr. Dave: Some people just need to see the angle. Use your cue along the line to the pocket to visualize the required shot angle. Especially useful for long back cuts where the angle from your shooting position to the blind pocket is very large.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 20,
+        "y": 75
+      },
+      {
+        "num": 3,
+        "x": 38,
+        "y": 40
+      }
+    ],
+    "aimLine": {
+      "x": 50,
+      "y": 0
+    }
+  },
+  {
+    "name": "Ghost Rail Technique",
+    "description": "Dr. Dave: For back cuts into a blind pocket, place your cue along the edge of the object ball to the edge of the pocket — mimicking a ghost rail. Now aim the shot just like a rail cut, with the cue pointing the way to the pocket.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 65
+      },
+      {
+        "num": 4,
+        "x": 38,
+        "y": 35
+      }
+    ],
+    "aimLine": {
+      "x": 50,
+      "y": 0
+    }
+  },
+  {
+    "name": "Ghost Rail — Side Pocket Back Cut",
+    "description": "Dr. Dave: Ghost rail technique applied to a side pocket back cut. Place cue from object ball edge to pocket edge, then aim the shot like a rail cut. Also visualize the center of where the cue ball needs to be at contact.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 30,
+        "y": 65
+      },
+      {
+        "num": 5,
+        "x": 18,
+        "y": 50
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 50
+    }
+  },
+  {
+    "name": "Ghost Ball Visualization",
+    "description": "Dr. Dave: The ghost ball is the imaginary position the cue ball needs to be at contact. Place a ball there to practice visualizing the aim while standing and down on the shot. Notice how far outside the object ball edge you need to aim.",
+    "difficulty": 2,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 6,
+        "x": 14,
+        "y": 30
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 0
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0
+      },
+      "power": 0.3
+    }
+  },
+  {
+    "name": "Cue Pivot Aiming",
+    "description": "Dr. Dave: Place the tip at the center of the ghost ball position with cue pointing at the pocket. Remember the tip needs to be half a ball's diameter in front of the object ball. Now pivot the cue to the center of the cue ball — this gives you the line of aim.",
+    "difficulty": 2,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 7,
+        "x": 12,
+        "y": 32
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 0
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0
+      },
+      "power": 0.35
+    }
+  },
+  {
+    "name": "Tangent Line — 90° Rule (Stun Shot)",
+    "description": "Dr. Dave: For a stun shot (no top or bottom spin at contact), the cue ball heads in the tangent line direction — perpendicular to the object ball's line to the pocket. This is the 90° rule. Use the cue joint to visualize the perpendicular direction.",
+    "difficulty": 2,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 8,
+        "x": 16,
+        "y": 38
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 25
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0.5
+      },
+      "power": 0.4
+    }
+  },
+  {
+    "name": "Tangent Line — Scratch Detection",
+    "description": "Dr. Dave: Knowing the tangent line direction is useful to detect scratches. If the stun path leads to a pocket, use roll (topspin) or draw to change the cue ball direction and avoid the scratch.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 55
+      },
+      {
+        "num": 9,
+        "x": 15,
+        "y": 30
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 0
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": -0.3
+      },
+      "power": 0.4
+    }
+  },
+  {
+    "name": "Natural Angle — 30° Rule (Rolling CB)",
+    "description": "Dr. Dave: For rolling cue ball shots, use the 30° rule / peace sign technique. Point one finger in the initial cue ball direction — the other points in the final direction. Move your head from the first line to the second to accurately visualize the path.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 10,
+        "x": 15,
+        "y": 38
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 25
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0.4
+      },
+      "power": 0.3
+    }
+  },
+  {
+    "name": "Natural Angle — Breakout Planning",
+    "description": "Dr. Dave: Knowing the natural angle direction helps plan breakout shots and caroms. Use roll on the cue ball and predict where it goes after contact to free a ball from a cluster or clear an opponent's ball from a pocket.",
+    "difficulty": 3,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 11,
+        "x": 15,
+        "y": 40
+      },
+      {
+        "num": 12,
+        "x": 30,
+        "y": 28
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 25
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0.4
+      },
+      "power": 0.35
+    }
+  },
+  {
+    "name": "Draw Shot Direction — 3x Angle",
+    "description": "Dr. Dave: For a good-action draw shot, duplicate the cut angle twice past the tangent line to find cue ball direction. Shift the tip down the tangent line slightly to account for path shift due to speed. If the draw path leads to a scratch, use a roll shot instead.",
+    "difficulty": 4,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 13,
+        "x": 15,
+        "y": 38
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 25
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": -0.5
+      },
+      "power": 0.6
+    }
+  },
+  {
+    "name": "Full-Hit CB Direction — 3x Angle",
+    "description": "Dr. Dave: For hits fuller than 3/4 ball, the 30° peace sign doesn't apply. Instead, measure the cut angle with your cue, pivoting from the ghost ball, then duplicate it 3x in the direction of cue ball motion to predict the rolling path.",
+    "difficulty": 4,
+    "balls": [
+      {
+        "num": 0,
+        "x": 25,
+        "y": 60
+      },
+      {
+        "num": 3,
+        "x": 22,
+        "y": 36
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 25
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0.3
+      },
+      "power": 0.35
+    }
+  },
+  {
+    "name": "Cross-Table One-Rail Kick",
+    "description": "Dr. Dave: To aim a one-rail kick, choose where you want the cue ball to go, place your cue over that point with the tip along the kicking rail, then pivot until the tip is exactly between the cue ball and the cue edge adjacent to it. This gives the required aim point for a rolling cue ball.",
+    "difficulty": 4,
+    "balls": [
+      {
+        "num": 0,
+        "x": 10,
+        "y": 70
+      },
+      {
+        "num": 9,
+        "x": 40,
+        "y": 30
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 50
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0.4
+      },
+      "power": 0.5
+    }
+  },
+  {
+    "name": "Mirror Method — One-Rail Kick",
+    "description": "Dr. Dave: Alternative kick aiming — measure the distance from the cue ball to the line of diamonds, mirror that distance to the other side of the rail, then look from your measured point to the target to find the aim point on the rail.",
+    "difficulty": 4,
+    "balls": [
+      {
+        "num": 0,
+        "x": 10,
+        "y": 70
+      },
+      {
+        "num": 9,
+        "x": 40,
+        "y": 30
+      }
+    ],
+    "aimLine": {
+      "x": 0,
+      "y": 50
+    },
+    "cueOverlay": {
+      "show": true,
+      "tip": {
+        "x": 0,
+        "y": 0.3
+      },
+      "power": 0.45
+    }
+  }
+]
