@@ -24,6 +24,7 @@ window.PT = (function () {
     // ── App state ──
     var appMode = 'menu';  // 'menu' | 'drillList' | 'drill'
     var projectionMode = false;
+    var cameraMode = false;
 
     // ── Ball state ──
     var balls = {};
@@ -227,6 +228,13 @@ window.PT = (function () {
         },
         get projectionMode() { return projectionMode; },
         set projectionMode(v) { projectionMode = v; },
+        get cameraMode() { return cameraMode; },
+        set cameraMode(v) {
+            cameraMode = v;
+            var cvs = document.getElementById('table-canvas');
+            if (cvs) cvs.style.background = v ? 'transparent' : '';
+            if (v) projectionMode = true;
+        },
 
         // Ball state
         balls: balls,

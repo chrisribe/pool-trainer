@@ -36,6 +36,7 @@
             startBtn.disabled = true;
             PT.camera.start()
                 .then(function () {
+                    if (PT) { PT.cameraMode = true; PT.drawTable(); PT.redrawBalls(); }
                     statusEl.textContent = 'Camera active. Check the table is fully visible behind this overlay.';
                     statusEl.style.color = '#2ecc71';
                     startBtn.style.display = 'none';

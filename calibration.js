@@ -136,6 +136,7 @@
     calibLayer.visible = false;
 
     function enterCalibrationMode() {
+        if (PT.camera && PT.camera.isActive()) PT.camera.setOpacity(0.85);
         PT.calibrationMode = true;
         calibLayer.visible = true;
         calibLayer.activate();
@@ -159,6 +160,7 @@
     }
 
     function exitCalibrationMode(save) {
+        if (PT.camera && PT.camera.isActive()) PT.camera.setOpacity(0.55);
         PT.calibrationMode = false;
         calibLayer.visible = false;
         calibLayer.removeChildren();
