@@ -157,3 +157,26 @@ Detection accuracy < 80%     | OpenCV.js upgrade path documented, easy to swap i
 - Stats feed => Hypercore log, shareable by key
 - Watch active players, see rankings, daily challenge drill
 - No central server, no auth
+
+---
+
+## Phase 6 - Video Recording (shot clips)
+
+- MediaRecorder API on getUserMedia stream - ~20 lines, no library
+- Record 15s window per shot (5s before Shoot! tap + 10s after)
+- Clip reference stored in shot record: { drillId, shotId, success, clipUrl, timestamp }
+- Clips stored in IndexedDB (localStorage too small for video)
+- Replay from stats: tap any shot => plays clip
+- Share via Pear: clip blobs streamable as Hypercore entries
+
+## Phase 7 - Motion Capture (ball trajectory replay)
+
+- Track all balls in motion frame-by-frame during shot
+- Each ball = trajectory array [{ x, y, t }] at 30fps
+- Challenge: motion blur => use last known position + velocity estimation
+- Stored alongside shot record
+- Replay: animate ghost balls along captured trajectories on canvas
+- Use cases: see exactly where cue ball deflected, identify pattern errors
+- Coach mode: review trajectories with overlay annotations
+
+Note: Phase 7 is the natural trigger to revisit OpenCV.js (motion blur handling).
