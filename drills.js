@@ -374,7 +374,7 @@
         }
 
         // Total items = resume? + categories + free play
-        menuItemCount = resumeOffset + catalog.length + 1;
+        menuItemCount = resumeOffset + catalog.length + 2;
         if (menuCursor >= menuItemCount) menuCursor = menuItemCount - 1;
         if (menuCursor < 0) menuCursor = 0;
 
@@ -450,10 +450,44 @@
             });
         }
 
+
+        // Camera setup button
+        var camY = fpY + btnH + gap;
+        var camIdx = fpIdx + 1;
+        var camSelected = (menuCursor === camIdx);
+        var camActive = PT.camera && PT.camera.isActive();
+        var camRect = new paper.Path.Rectangle({
+            from: new paper.Point(cx - btnW / 2, camY),
+            to: new paper.Point(cx + btnW / 2, camY + btnH),
+            radius: 8,
+            fillColor: camSelected ? 'rgba(255,165,0,0.2)' : 'rgba(255,165,0,0.08)',
+            strokeColor: camSelected ? '#ffa500' : 'rgba(255,165,0,0.4)',
+            strokeWidth: camSelected ? 2 : 1
+        });
+        camRect.data = { action: 'camera' };
+        new paper.PointText({
+            point: new paper.Point(cx, camY + btnH * 0.65),
+            content: camActive ? '📷  Camera ON' : '📷  Camera Setup',
+            fillColor: camActive ? '#ffa500' : 'rgba(255,165,0,0.7)',
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 'bold',
+            fontSize: btnH * 0.4,
+            justification: 'center'
+        }).data = { action: 'camera' };
+        if (camSelected) {
+            new paper.PointText({
+                point: new paper.Point(cx - btnW / 2 - btnH * 0.4, camY + btnH * 0.65),
+                content: '▶',
+                fillColor: '#ffa500',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: btnH * 0.4,
+                justification: 'center'
+            });
+        }
         // Keyboard hint
         new paper.PointText({
             point: new paper.Point(cx, fb.bottom - fh * 0.12),
-            content: '\u2191\u2193 Navigate   Enter Select   F Fullscreen   P Projection   K Calibrate',
+            content: '\u2191\u2193 Navigate   Enter Select   F Fullscreen   P Projection   K Calibrate   C Camera',
             fillColor: 'rgba(255,255,255,0.25)',
             fontFamily: 'Arial, sans-serif',
             fontSize: Math.min(fw, fh) * 0.02,
@@ -898,6 +932,8 @@
                 PT.qrLayer.removeChildren();
                 menuCursor = 0;
                 showDrillList(catId, 0);
+            } else if (catIdx === catalog.length + 1) {
+                if (PT.cameraSetup) PT.cameraSetup.show();
             } else if (catIdx === catalog.length) {
                 PT.appMode = 'drill';
                 PT.qrLayer.visible = false;

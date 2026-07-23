@@ -58,6 +58,8 @@
                     PT.clearShotLines();
                     PT.rack9Ball();
                     PT.showDrillHUD();
+                } else if (uiHit.action === 'camera') {
+                    if (PT.cameraSetup) PT.cameraSetup.show();
                 } else if (uiHit.action === 'newCustomDrill') {
                     if (PT.startCustomDrill) PT.startCustomDrill();
                 } else if (uiHit.action === 'resume') {
@@ -212,6 +214,12 @@
             return;
         }
 
+        if (e.key === 'c' || e.key === 'C') {
+            if (PT.appMode === 'menu' || PT.appMode === 'drillList') {
+                if (PT.cameraSetup) PT.cameraSetup.show();
+                return;
+            }
+        }
         if (PT.appMode === 'drill') {
             // Edit mode: arrow keys navigate, E exits
             if (PT.editMode) {
